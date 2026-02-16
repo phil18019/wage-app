@@ -18,25 +18,8 @@ const geistMono = Geist_Mono({
   description: "Shift & wage calculator",
   manifest: "/manifest.json",
 themecolor: "#0B2A6F",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Phil's Wage App",
-  },
-
-  icons: {
-    apple: "/icon-192.png",
-  },
-
-  other: {
-    "apple-touch-startup-image": [
-      {
-        url: "/apple-splash-1290-2796.png",
-      },
-    ],
-  },
-};
-
+ 
+      
 
 export default function RootLayout({
   children,
