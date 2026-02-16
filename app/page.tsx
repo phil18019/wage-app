@@ -477,7 +477,14 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Wage App (Prototype)</h1>
+      <h1 className="text-2xl font-bold mb-2 text-center"> Phil's Wage App </h1>
+      <p className="text-xs text-gray-500 mb-1 text-center">
+  Created by Phil Crompton
+</p>
+
+<p className="text-[10px] text-gray-400 mb-6 text-center">
+  v1.0.0
+</p>
 
       {/* Rates */}
       <div className="mb-6 border rounded p-4">
