@@ -6,12 +6,19 @@ export const metadata: Metadata = {
   description: "Shift & wage calculator",
   manifest: "/manifest.json",
   themeColor: "#0B2A6F",
+
   icons: {
     icon: [
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: "/icon-192.png",
+  },
+
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Phil's Wage App",
   },
 };
 
