@@ -3,7 +3,8 @@ export default function Head() {
     <>
       <link
         rel="apple-touch-startup-image"
-        href="/apple-splash-1290x2796.png"
+        href="/apple-splash-1179x2556.png"
+        media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)"
       />
     </>
   );

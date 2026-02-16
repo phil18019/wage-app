@@ -20,6 +20,10 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Phil's Wage App",
   },
+
+  other: {
+    "apple-touch-startup-image": "/apple-splash-1290x2796.png",
+  },
 };
 
 export default function RootLayout({
