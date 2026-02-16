@@ -14,10 +14,24 @@ const geistMono = Geist_Mono({
 
 
   export const metadata = {
-  title: "Wage App",
-  description: "Personal wage calculator",
+  title: "Phil's Wage App",
+  description: "Shift & wage calculator",
   manifest: "/manifest.json",
   themeColor: "#0B2A6F",
+
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Phil's Wage App",
+  },
+
+  icons: {
+    apple: "/icon-192.png",
+  },
+
+  other: {
+    "apple-touch-startup-image": "/apple-splash-1290-2796.png",
+  },
 };
 
 
