@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getQualifyingHours, setQualifyingHours } from "../lib/settings";
 
 type Settings = {
   baseRate: number;        // e.g. 17.3

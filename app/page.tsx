@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { getQualifyingHours } from "./lib/settings";
 
 type Flag = "" | "Y" | "P";
 
@@ -201,6 +202,7 @@ export default function Home() {
     holidayRate: 0,
   });
 
+  const qualifyingHours = getQualifyingHours();
   const [date, setDate] = useState("");
   const [scheduledHours, setScheduledHours] = useState(10);
   const [startTime, setStartTime] = useState("");
@@ -573,7 +575,7 @@ export default function Home() {
         <div className="text-lg font-semibold">Hours</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
           <div>Total Worked: {month.worked}</div>
-          <div>Qualifying (for 160): {month.qualifying}</div>
+         <div>Qualifying (for {qualifyingHours}): {month.qualifying}</div>
           <div>STD Hours: {month.std}</div>
           <div>OT Hours: {month.ot}</div>
           <div>Late Prem: {month.late}</div>
