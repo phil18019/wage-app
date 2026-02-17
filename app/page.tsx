@@ -202,7 +202,23 @@ export default function Home() {
     holidayRate: 0,
   });
 
-  const qualifyingHours = getQualifyingHours();
+  const [qualifyingHours, setQualifyingHours] = useState(() => getQualifyingHours());
+
+useEffect(() => {
+  const refresh = () => setQualifyingHours(getQualifyingHours());
+
+  window.addEventListener("focus", refresh);
+  document.addEventListener("visibilitychange", refresh);
+  window.addEventListener("storage", refresh);
+
+  refresh();
+
+  return () => {
+    window.removeEventListener("focus", refresh);
+    document.removeEventListener("visibilitychange", refresh);
+    window.removeEventListener("storage", refresh);
+  };
+}, []);
   const [date, setDate] = useState("");
   const [scheduledHours, setScheduledHours] = useState(10);
   const [startTime, setStartTime] = useState("");
@@ -357,8 +373,8 @@ export default function Home() {
     const qualifyingRaw = round2(worked + holFull + partHol + partLieu + partBankHol + dblStdAddBack - sick - unpaidFull);
     const qualifying = round2(Math.max(0, qualifyingRaw));
 
-    const ot = round2(Math.max(0, qualifying - 160));
-    const bucket = Math.min(160, qualifying);
+    const ot = round2(Math.max(0, qualifying - qualifyingHours));
+    const bucket = Math.min(qualifyingHours, qualifying);
     const std = round2(Math.max(0, bucket - (hol + lieu + bankHol + dbl)));
 
     const sickPay = safeMoney(sick * rates.baseRate);

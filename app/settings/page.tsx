@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getQualifyingHours, setQualifyingHours } from "../lib/settings";
 
 type Settings = {
   baseRate: number;        // e.g. 17.3
@@ -49,6 +48,7 @@ export default function SettingsPage() {
 
   const save = () => {
     localStorage.setItem(KEY, JSON.stringify(s));
+    console.log("SAVED SETTINGS:", localStorage.getItem(KEY));
     setSavedMsg("Saved ✓");
     setTimeout(() => setSavedMsg(""), 1500);
   };

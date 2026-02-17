@@ -1,18 +1,20 @@
-const KEY = "wagecheck.qualifyingHours.v1";
-const DEFAULT = 160;
+const KEY = "wagecheck.settings.v1";
+
+const DEFAULT_OT_THRESHOLD = 160;
 
 export function getQualifyingHours(): number {
   try {
     const raw = localStorage.getItem(KEY);
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT;
-  } catch {
-    return DEFAULT;
-  }
-}
+    if (!raw) return DEFAULT_OT_THRESHOLD;
 
-export function setQualifyingHours(value: number) {
-  try {
-    localStorage.setItem(KEY, String(value));
-  } catch {}
+    const parsed = JSON.parse(raw);
+
+    const value = Number(parsed?.otThreshold);
+
+    return Number.isFinite(value) && value > 0
+      ? value
+      : DEFAULT_OT_THRESHOLD;
+  } catch {
+    return DEFAULT_OT_THRESHOLD;
+  }
 }
