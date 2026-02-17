@@ -1,7 +1,21 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+
 export default function HelpPage() {
+  const router = useRouter();
+
   return (
     <main className="mx-auto max-w-3xl p-4 sm:p-6">
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
+        
+        <button
+        onClick={() => router.push("/")}
+      className="mb-4 text-sm px-3 py-1 border rounded"
+    >
+      ← Back
+    </button>
+
         <h1 className="text-2xl font-bold">Help</h1>
         <p className="mt-2 text-sm text-gray-600">
           Quick guide to using WageCheck.
