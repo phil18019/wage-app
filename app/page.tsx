@@ -489,12 +489,21 @@ export default function Home() {
     </p>
   </div>
 
+  <div className="flex gap-2 h-fit">
+  <Link
+    href="/settings"
+    className="text-xs bg-gray-200 px-3 py-1 rounded-lg"
+  >
+    Settings
+  </Link>
+
   <Link
     href="/help"
-    className="text-xs bg-gray-200 px-3 py-1 rounded-lg h-fit"
+    className="text-xs bg-gray-200 px-3 py-1 rounded-lg"
   >
     Help
   </Link>
+</div>
 </div>
 
       {/* Rates */}
