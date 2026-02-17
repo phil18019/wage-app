@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Phil's Wage App",
+  title: "Wage Check",
   description: "Shift & wage calculator",
   manifest: "/manifest.json",
   themeColor: "#0B2A6F",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Phil's Wage App",
+    title: "Wage Check",
   },
 
   other: {

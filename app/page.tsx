@@ -480,7 +480,7 @@ export default function Home() {
     <main className="min-h-screen p-6 max-w-4xl mx-auto">
       <div className="mb-6 flex justify-between items-start">
   <div className="text-center w-full">
-    <h1 className="text-2xl font-bold mb-2">Phil's Wage App</h1>
+    <h1 className="text-2xl font-bold mb-2">Wage Check</h1>
     <p className="text-xs text-gray-500 mb-1">
       Created by Phil Crompton
     </p>

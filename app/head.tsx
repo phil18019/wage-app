@@ -1,6 +1,9 @@
 export default function Head() {
   return (
     <>
+     <meta name="apple-mobile-web-app-title" content="WageCheck" />
+<meta name="application-name" content="WageCheck" />
+     
       <link
         rel="apple-touch-startup-image"
         href="/apple-splash-1179x2556.png"
