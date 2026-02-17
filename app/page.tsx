@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type Flag = "" | "Y" | "P";
 
@@ -477,14 +478,24 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2 text-center"> Phil's Wage App </h1>
-      <p className="text-xs text-gray-500 mb-1 text-center">
-  Created by Phil Crompton
-</p>
+      <div className="mb-6 flex justify-between items-start">
+  <div className="text-center w-full">
+    <h1 className="text-2xl font-bold mb-2">Phil's Wage App</h1>
+    <p className="text-xs text-gray-500 mb-1">
+      Created by Phil Crompton
+    </p>
+    <p className="text-[10px] text-gray-400">
+      v1.0.0
+    </p>
+  </div>
 
-<p className="text-[10px] text-gray-400 mb-6 text-center">
-  v1.0.0
-</p>
+  <Link
+    href="/help"
+    className="text-xs bg-gray-200 px-3 py-1 rounded-lg h-fit"
+  >
+    Help
+  </Link>
+</div>
 
       {/* Rates */}
       <div className="mb-6 border rounded p-4">
