@@ -27,6 +27,7 @@ export default function HelpPage() {
               <h2 className="text-lg font-semibold">Getting started</h2>
               <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-gray-700 dark:text-gray-200">
                 <li>Add your shift times on the Home screen.</li>
+                <li>Enter part/full shifts accordingly</li>
                 <li>Edit pay rates and qualifying hours in Settings.</li>
                 <li>Export your monthly data to CSV.</li>
               </ul>
@@ -43,7 +44,7 @@ export default function HelpPage() {
         </div>
 
         <p className="mt-6 text-xs text-gray-500 dark:text-gray-400">
-          Saved locally on this device only.
+          This is an estimated wage calculation and should be used as a guide, your company payslip remains the official record of pay. 
         </p>
       </div>
     </main>
