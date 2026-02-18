@@ -587,12 +587,23 @@ px-3 py-1 rounded-lg backdrop-blur"
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="text-lg font-semibold">This Month</div>
           <div className="flex gap-2">
-            <button className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 font-semibold" onClick={exportCSV}>
-              Export CSV
-            </button>
-            <button className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 font-semibold" onClick={clearMonth}>
-              Clear Month
-            </button>
+            <button
+  className="px-4 py-2 rounded font-semibold transition-colors duration-200
+  bg-green-600 hover:bg-green-700 text-white
+  dark:bg-green-500 dark:hover:bg-green-600"
+  onClick={exportCSV}
+>
+  Export CSV
+</button>
+
+<button
+  className="px-4 py-2 rounded font-semibold transition-colors duration-200
+  bg-red-600 hover:bg-red-700 text-white
+  dark:bg-red-500 dark:hover:bg-red-600"
+  onClick={clearMonth}
+>
+  Clear Month
+</button>
           </div>
         </div>
 
