@@ -510,14 +510,22 @@ useEffect(() => {
   <div className="flex gap-2 h-fit">
   <Link
     href="/settings"
-    className="text-xs bg-gray-200 px-3 py-1 rounded-lg"
+    className="text-xs
+bg-white/90 text-gray-800
+dark:bg-white/10 dark:text-white
+border border-white/20
+px-3 py-1 rounded-lg backdrop-blur"
   >
     Settings
   </Link>
 
   <Link
     href="/help"
-    className="text-xs bg-gray-200 px-3 py-1 rounded-lg"
+    className="text-xs
+bg-white/90 text-gray-800
+dark:bg-white/10 dark:text-white
+border border-white/20
+px-3 py-1 rounded-lg backdrop-blur"
   >
     Help
   </Link>
