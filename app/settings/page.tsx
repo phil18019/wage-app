@@ -66,7 +66,14 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between gap-3">
           <button
             onClick={() => router.push("/")}
-            className="text-sm px-3 py-1 border rounded"
+            <button
+  onClick={() => router.push("/")}
+  className="mb-4 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold
+  bg-gray-200 text-gray-900 hover:bg-gray-300
+  dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+>
+  ← Back
+</button>
           >
             ← Back
           </button>
