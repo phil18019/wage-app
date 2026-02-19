@@ -507,21 +507,34 @@ export default function Home() {
             <div className={label}>Sick hours</div>
             <input className={input} value={sickHours} onChange={(e) => setSickHours(e.target.value)} placeholder="0" inputMode="decimal" />
           </div>
-        </div>
+        
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="rounded-xl bg-black/20 p-3">
-            <div className="text-sm text-white/70">Worked hours</div>
-            <div className="text-xl font-bold">{workedHours}</div>
-          </div>
-          <div className="rounded-xl bg-black/20 p-3">
-            <div className="text-sm text-white/70">Premiums today (Late / Night)</div>
-            <div className="text-xl font-bold">
-              {prem.lateHours} / {prem.nightHours}
-            </div>
-            <div className="text-xs text-white/50 mt-1">Late window 14:00–22:00 • Night window 22:00–06:00</div>
-          </div>
-        </div>
+  <div className="rounded-xl bg-gray-100 dark:bg-black/20 p-3">
+    <div className="text-sm text-gray-700 dark:text-white/70">
+      Worked hours
+    </div>
+
+    <div className="text-xl font-bold text-gray-900 dark:text-white">
+      {workedHours}
+    </div>
+  </div>
+  </div>
+  <div className="rounded-xl bg-gray-100 dark:bg-black/20 p-3">
+    <div className="text-sm text-gray-700 dark:text-white/70">
+      Premiums today (Late / Night)
+    </div>
+
+    <div className="text-xl font-bold text-gray-900 dark:text-white">
+      {prem.lateHours} / {prem.nightHours}
+    </div>
+
+    <div className="text-xs text-gray-600 dark:text-white/50 mt-1">
+      Late window 14:00–22:00 • Night window 22:00–06:00
+    </div>
+  </div>
+
+</div>
 
         <button
           className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold"
