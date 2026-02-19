@@ -1,23 +1,23 @@
 export type Settings = {
-  baseRate: number;          // e.g. 17.3
-  otThreshold: number;       // e.g. 160
-  otPremiumAdd: number;      // e.g. 6.7 (paid on top of base)
-  latePremiumAdd: number;    // e.g. 2.26
-  nightPremiumAdd: number;   // e.g. 3.45
-  doubleRate: number;        // e.g. 34.6
-  holidayRate: number;       // user-editable monthly
+  baseRate: number;
+  otPremiumAdd: number;
+  latePremiumAdd: number;
+  nightPremiumAdd: number;
+  holidayRate: number;
+  otThreshold: number;
+  doublerate: number;
 };
 
 export const SETTINGS_KEY = "wagecheck.settings.v1";
 
 export const DEFAULT_SETTINGS: Settings = {
   baseRate: 17.3,
-  otThreshold: 160,
   otPremiumAdd: 6.7,
   latePremiumAdd: 2.26,
   nightPremiumAdd: 3.45,
-  doubleRate: 34.6,
   holidayRate: 0,
+  otThreshold: 160,
+  doublerate: 2,
 };
 
 function safeNum(x: unknown, fallback: number) {
