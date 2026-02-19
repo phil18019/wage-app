@@ -513,18 +513,14 @@ const input =
           </div>
         
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-  <div className="rounded-xl bg-gray-100 dark:bg-black/20 p-3">
-    <div className="text-sm text-gray-700 dark:text-white/70">
-      Worked hours
-    </div>
-
-    <div className="text-xl font-bold text-gray-900 dark:text-white">
-      {workedHours}
-    </div>
+  {/* Worked hours card */}
+  <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
+    <div className="text-sm text-gray-700 dark:text-white/70">Worked hours</div>
+    <div className="text-xl font-bold text-gray-900 dark:text-white">{workedHours}</div>
   </div>
-  </div>
-  <div className="rounded-xl bg-gray-100 dark:bg-black/20 p-3">
+
+  {/* Premiums card */}
+  <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
     <div className="text-sm text-gray-700 dark:text-white/70">
       Premiums today (Late / Night)
     </div>
@@ -537,7 +533,6 @@ const input =
       Late window 14:00–22:00 • Night window 22:00–06:00
     </div>
   </div>
-
 </div>
 
         <button
