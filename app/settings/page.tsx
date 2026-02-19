@@ -82,9 +82,9 @@ export default function SettingsPage() {
                 className={inputClass}
                 type="number"
                 step="0.01"
-                value={s.otPremiumAdd}
+                value={s.otAddOn}
                 onChange={(e) =>
-                  setS((p) => ({ ...p, otPremiumAdd: Number(e.target.value) }))
+                  setS((p) => ({ ...p, otAddOn: Number(e.target.value) }))
                 }
               />
             </div>
@@ -95,9 +95,9 @@ export default function SettingsPage() {
                 className={inputClass}
                 type="number"
                 step="0.01"
-                value={s.latePremiumAdd}
+                value={s.latePremium}
                 onChange={(e) =>
-                  setS((p) => ({ ...p, latePremiumAdd: Number(e.target.value) }))
+                  setS((p) => ({ ...p, latePremium: Number(e.target.value) }))
                 }
               />
             </div>
@@ -108,9 +108,9 @@ export default function SettingsPage() {
                 className={inputClass}
                 type="number"
                 step="0.01"
-                value={s.nightPremiumAdd}
+                value={s.nightPremium}
                 onChange={(e) =>
-                  setS((p) => ({ ...p, nightPremiumAdd: Number(e.target.value) }))
+                  setS((p) => ({ ...p, nightPremium: Number(e.target.value) }))
                 }
               />
             </div>

@@ -7,9 +7,9 @@ type Flag = "" | "Y" | "P";
 
 type Settings = {
   baseRate: number;        // £/hr
-  otPremiumAdd: number;         // £/hr added to base for OT
-  nightPremiumAdd: number;    // £/hr (add-on)
-  latePremiumAdd: number;     // £/hr (add-on)
+  otAddOn: number;         // £/hr added to base for OT
+  nightPremium: number;    // £/hr (add-on)
+  latePremium: number;     // £/hr (add-on)
   holidayRate: number;     // £/hr (full holiday rate, not add-on)
   otThreshold: number;     // qualifying hours before OT
   doubleRate: number;     // multiplier for double time (optional, default 2)
@@ -36,9 +36,9 @@ const STORAGE_KEY_SETTINGS = "wagecheck.settings.v1";
 
 const DEFAULT_SETTINGS: Settings = {
   baseRate: 0,
-  otPremiumAdd: 0,
-  nightPremiumAdd: 0,
-  latePremiumAdd: 0,
+  otAddOn: 0,
+  nightPremium: 0,
+  latePremium: 0,
   holidayRate: 0,
   otThreshold: 160,
   doubleRate: 2,
@@ -150,7 +150,7 @@ function getSettings(): Settings {
       latePremium: safeNum(src?.latePremium),
       holidayRate: safeNum(src?.holidayRate),
       otThreshold: clampNonNeg(safeNum(src?.otThreshold)) || DEFAULT_SETTINGS.otThreshold,
-      doubleMult: clampNonNeg(safeNum(src?.doubleMult)) || DEFAULT_SETTINGS.doubleMult,
+      doubleRate: clampNonNeg(safeNum(src?.doubleRate)) || DEFAULT_SETTINGS.doubleRate,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -308,7 +308,7 @@ export default function Home() {
       totalPay: 0,
     };
 
-    const doubleMult = clampNonNeg(settings.doubleMult ?? 2) || 2;
+    const doubleMult = clampNonNeg(settings.doubleRate ?? 2) || 2;
 
     for (const r of rows) {
       const wh = clampNonNeg(r.scheduledHours); // stored
@@ -370,9 +370,9 @@ export default function Home() {
 
     // Pay
     const base = clampNonNeg(settings.baseRate);
-   const otAdd   = clampNonNeg(settings.otPremiumAdd);
-   const lateAdd = clampNonNeg(settings.latePremiumAdd);
-   const nightAdd = clampNonNeg(settings.nightPremiumAdd);
+   const otAdd   = clampNonNeg(settings.otAddOn);
+   const lateAdd = clampNonNeg(settings.latePremium);
+   const nightAdd = clampNonNeg(settings.nightPremium);
     const holRate = clampNonNeg(settings.holidayRate);
 
    tot.stdPay = round2(tot.std * base);

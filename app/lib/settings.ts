@@ -1,8 +1,8 @@
 export type Settings = {
   baseRate: number;
-  otPremiumAdd: number;
-  latePremiumAdd: number;
-  nightPremiumAdd: number;
+  otAddOn: number;
+  latePremium: number;
+  nightPremium: number;
   holidayRate: number;
   otThreshold: number;
   doubleRate: number;
@@ -12,9 +12,9 @@ export const SETTINGS_KEY = "wagecheck.settings.v1";
 
 export const DEFAULT_SETTINGS: Settings = {
   baseRate: 17.3,
-  otPremiumAdd: 6.7,
-  latePremiumAdd: 2.26,
-  nightPremiumAdd: 3.45,
+  otAddOn: 6.7,
+  latePremium: 2.26,
+  nightPremium: 3.45,
   holidayRate: 0,
   otThreshold: 160,
   doubleRate: 2,
@@ -34,9 +34,9 @@ export function getSettings(): Settings {
     return {
       baseRate: safeNum(parsed?.baseRate, DEFAULT_SETTINGS.baseRate),
       otThreshold: safeNum(parsed?.otThreshold, DEFAULT_SETTINGS.otThreshold),
-      otPremiumAdd: safeNum(parsed?.otPremiumAdd, DEFAULT_SETTINGS.otPremiumAdd),
-      latePremiumAdd: safeNum(parsed?.latePremiumAdd, DEFAULT_SETTINGS.latePremiumAdd),
-      nightPremiumAdd: safeNum(parsed?.nightPremiumAdd, DEFAULT_SETTINGS.nightPremiumAdd),
+      otAddOn: safeNum(parsed?.otPremiumAdd, DEFAULT_SETTINGS.otAddOn),
+      latePremium: safeNum(parsed?.latePremiumAdd, DEFAULT_SETTINGS.latePremium),
+      nightPremium: safeNum(parsed?.nightPremiumAdd, DEFAULT_SETTINGS.nightPremium),
       doubleRate: safeNum(parsed?.doubleRate, DEFAULT_SETTINGS.doubleRate),
       holidayRate: safeNum(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
     };
