@@ -404,17 +404,21 @@ export default function Home() {
     downloadText("wage-app-export.csv", csv);
   }
 
-  const card = "rounded-2xl bg-white/10 border border-white/10 p-4 shadow";
-  const label = "text-sm text-white/70";
-  const input =
-    "mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 text-white placeholder:text-white/40";
+  const card =
+  "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow dark:bg-white/10 dark:border-white/10";
+
+const label =
+  "text-sm text-gray-700 dark:text-white/70";
+
+const input =
+  "mt-1 w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
 
   return (
-    <main className="min-h-screen p-6 max-w-4xl mx-auto text-white">
+    <main className="min-h-screen p-6 max-w-4xl mx-auto text-[var(--foreground)]">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Wage Check</h1>
-          <p className="text-xs text-white/60">Saved locally on this device only.</p>
+          <p className="text-xs text-gray-600 dark:text-white/60">Saved locally on this device only.</p>
         </div>
 
         <div className="flex gap-2">
