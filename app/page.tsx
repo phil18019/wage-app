@@ -375,8 +375,8 @@ export default function Home() {
     const nightAdd = clampNonNeg(settings.nightPremium);
     const holRate = clampNonNeg(settings.holidayRate);
 
-    tot.stdPay = round2(std * base);
-    tot.otPay = round2(ot * (base + otAdd));
+   tot.stdPay = round2(tot.std * base);
+   tot.otPay  = round2(tot.ot * (base + otAdd));
     tot.sickPay = round2(tot.sick * base);
 
     tot.lateAddPay = round2(tot.late * lateAdd);
