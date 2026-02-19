@@ -7,12 +7,12 @@ type Flag = "" | "Y" | "P";
 
 type Settings = {
   baseRate: number;        // £/hr
-  otAddOn: number;         // £/hr added to base for OT
-  nightPremium: number;    // £/hr (add-on)
-  latePremium: number;     // £/hr (add-on)
+  otPremiumAdd: number;         // £/hr added to base for OT
+  nightPremiumAdd: number;    // £/hr (add-on)
+  latePremiumAdd: number;     // £/hr (add-on)
   holidayRate: number;     // £/hr (full holiday rate, not add-on)
   otThreshold: number;     // qualifying hours before OT
-  doubleMult?: number;     // multiplier for double time (optional, default 2)
+  doubleRate: number;     // multiplier for double time (optional, default 2)
 };
 
 type ShiftRow = {
@@ -36,12 +36,12 @@ const STORAGE_KEY_SETTINGS = "wagecheck.settings.v1";
 
 const DEFAULT_SETTINGS: Settings = {
   baseRate: 0,
-  otAddOn: 0,
-  nightPremium: 0,
-  latePremium: 0,
+  otPremiumAdd: 0,
+  nightPremiumAdd: 0,
+  latePremiumAdd: 0,
   holidayRate: 0,
   otThreshold: 160,
-  doubleMult: 2,
+  doubleRate: 2,
 };
 
 function round2(n: number) {
