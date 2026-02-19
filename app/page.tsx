@@ -260,8 +260,8 @@ return `${yyyy}-${mm}-${dd};`
       tot.holiday += hh;
       tot.unpaid += uh;
       tot.qualifying += q;
-      tot.late += prem.lateHours;
-      tot.night += prem.nightHours;
+      tot.late += prem.late;
+      tot.night += prem.night;
     }
 
     tot.worked = round2(tot.worked);
