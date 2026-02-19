@@ -251,15 +251,17 @@ return `${yyyy}-${mm}-${dd};`
 
       const q = round2(wh + (r.sickHours || 0) + hh);
 
-      const prem = timesDisabledRow ? { late: 0, night: 0 } : computeLateNightHours(r.startTime, r.endTime);
+      const prem = timesDisabledRow
+  ? { lateHours: 0, nightHours: 0 }
+  : computeLateNightHours(r.startTime, r.endTime);
 
       tot.worked += wh;
       tot.sick += r.sickHours || 0;
       tot.holiday += hh;
       tot.unpaid += uh;
       tot.qualifying += q;
-      tot.late += prem.lateHours;
-      tot.night += prem.nightHours;
+      tot.late += prem.late;
+      tot.night += prem.night;
     }
 
     tot.worked = round2(tot.worked);
