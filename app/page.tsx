@@ -120,8 +120,8 @@ function computeLateNightHours(startTime: string, endTime: string) {
   // helper to overlap [s,e) with [a,b)
   const overlap = (a: number, b: number) => Math.max(0, Math.min(e, b) - Math.max(s, a));
 
-  // Late window: 18:00-22:00 (same day)
-  const lateMin = overlap(18 * 60, 22 * 60);
+  // Late window: 14:00-22:00 (same day)
+  const lateMin = overlap(14 * 60, 22 * 60);
 
   // Night window: 22:00-06:00 (spans midnight)
   // Represent as two windows: 22:00-24:00 and 00:00-06:00 (+24h)
