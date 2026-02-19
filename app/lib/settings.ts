@@ -5,7 +5,7 @@ export type Settings = {
   nightPremiumAdd: number;
   holidayRate: number;
   otThreshold: number;
-  doublerate: number;
+  doubleRate: number;
 };
 
 export const SETTINGS_KEY = "wagecheck.settings.v1";
@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   nightPremiumAdd: 3.45,
   holidayRate: 0,
   otThreshold: 160,
-  doublerate: 2,
+  doubleRate: 2,
 };
 
 function safeNum(x: unknown, fallback: number) {
