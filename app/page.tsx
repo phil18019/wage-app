@@ -432,7 +432,7 @@ const input =
       </div>
 
       {/* This shift */}
-      <div className={`${card} mb-5`}>
+      <div className={`${card} mb-5`}></div>
         <div className="text-lg font-semibold mb-3">This shift</div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -630,9 +630,6 @@ const input =
         )}
       </div>
 
-      <div className="mt-6 text-xs text-white/50">
-        If you ever see “Unexpected character \\u{2060}”, it usually means an invisible character got pasted in — delete that line and re-type it manually.
-      </div>
-    </main>
+      </main>
   );
 }
