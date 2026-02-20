@@ -267,11 +267,26 @@ export default function Home() {
     tot.late = round2(tot.late);
     tot.night = round2(tot.night);
 
-    // OT split
-    const threshold = clampNonNeg(settings.otThreshold);
-    tot.qualifying = Math.min(tot.worked, threshold);
-    tot.std = Math.min(tot.worked, threshold);
-    tot.ot = Math.max(0, tot.worked - threshold);
+   // --- Qualifying + OT split ---
+const threshold = clampNonNeg(settings.otThreshold);
+
+// Qualifying hours for OT (exclude unpaid + sick)
+tot.qualifying = round2(
+  tot.worked + tot.hol + tot.lieu + tot.bankHol + tot.dbl
+);
+
+// Standard bucket is filled by non-worked paid categories first (HOL/LIEU/BH/DOUBLE)
+const bucketUsed = tot.hol + tot.lieu + tot.bankHol + tot.dbl;
+const bucketLeft = Math.max(0, threshold - bucketUsed);
+
+// Worked hours that fit inside remaining STD bucket
+const stdWorked = Math.min(tot.worked, bucketLeft);
+
+// OT is only the leftover worked hours above the remaining bucket
+const otWorked = Math.max(0, tot.worked - stdWorked);
+
+tot.std = round2(stdWorked);
+tot.ot = round2(otWorked);
 
     // Pay
     const base = clampNonNeg(settings.baseRate);
