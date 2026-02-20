@@ -372,7 +372,7 @@ export default function Home() {
     tot.night = round2(tot.night);
 
     // Qualifying counts toward OT trigger (NOT unpaid)
-    tot.qualifying = round2(tot.worked + tot.hol + tot.lieu + tot.bankHol + tot.dbl);
+    tot.qualifying = round2(tot.worked + tot.hol + tot.lieu + tot.bankHol);
 
     // OT triggered by qualifying,
     // but OT PAID can only come from hours that are physically worked AND not already paid as Double.
