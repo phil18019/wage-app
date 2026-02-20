@@ -39,7 +39,7 @@ function fmtGBP(n: number) {
 
 function toMinutes(t: string) {
   // accepts "HH:MM" or "HH:MM:SS"
-  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t.trim());
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec((t || "").trim());
   if (!m) return NaN;
   const hh = Number(m[1]);
   const mm = Number(m[2]);
@@ -115,44 +115,43 @@ function addHoursToTime(startTime: string, hours: number) {
   return `${hh}:${mm}`;
 }
 
-function isFullFlag(flag: Flag) {
-  return flag === "Y";
-}
-
-function isAnyFullFlag(r: Pick<ShiftRow, "holidayFlag" | "unpaidFlag" | "lieuFlag" | "bankHolFlag" | "doubleFlag">) {
-  return (
-    isFullFlag(r.unpaidFlag) ||
-    isFullFlag(r.holidayFlag) ||
-    isFullFlag(r.lieuFlag) ||
-    isFullFlag(r.bankHolFlag) ||
-    isFullFlag(r.doubleFlag)
-  );
+// FULL flags that mean "not worked" (Double is NOT one of these)
+function isOffFullFlag(r: Pick<ShiftRow, "holidayFlag" | "unpaidFlag" | "lieuFlag" | "bankHolFlag">) {
+  return r.unpaidFlag === "Y" || r.holidayFlag === "Y" || r.lieuFlag === "Y" || r.bankHolFlag === "Y";
 }
 
 /**
- * Business rules implemented:
- * - "Worked" = physically worked hours from times, unless ANY FULL flag (Y) is set -> worked becomes 0.
- * - PART flags (P) consume the remainder of the scheduled shift AFTER worked hours:
- *   remainder = max(0, scheduled - worked)
- *   That remainder is allocated in order: Unpaid(P) -> Holiday(P) -> Lieu(P) -> BH(P) -> Double(P)
- * - Premiums:
+ * Business rules implemented (updated to match your examples):
+ *
+ * Worked (physical) = hours from start/end,
+ *   except if FULL Holiday/Unpaid/Lieu/BH => worked = 0.
+ *
+ * Scheduled portion = scheduledHours if set, else worked.
+ *
+ * Remainder = max(0, scheduled - worked).
+ * PART flags (P) consume the remainder (NOT half), in priority order:
+ *   Unpaid(P) -> Holiday(P) -> Lieu(P) -> BH(P) -> Double(P)
+ *
+ * FULL flags:
+ *   - Unpaid(Y), Holiday(Y), Lieu(Y), BH(Y) consume the entire scheduled portion.
+ *   - Double(Y) consumes the scheduled portion too (but DOES NOT zero worked).
+ *
+ * Premiums:
  *   - Blocked only for FULL Holiday (Y) or FULL Unpaid (Y)
- *   - If LIEU/BH/Double present (Y or P), premiums are "protected" across the scheduled shift end (start + scheduledHours)
- *   - Otherwise premiums apply only to the actual worked time window (start->end)
+ *   - Premiums are protected if LIEU/BH/Double set (Y or P)
+ *       - LIEU/BH: use scheduled end (start + scheduled)
+ *       - Double: use actual end IF worked > scheduled, else scheduled end
+ *   - If not protected: premiums only count when worked > 0, using actual end
  */
 function computeRowBreakdown(r: ShiftRow) {
-  const whRaw = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
   const sh = clampNonNeg(Number(r.scheduledHours) || 0);
+  const whRaw = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
+  const scheduledPortion = sh > 0 ? sh : whRaw;
 
-  const baseShift = sh > 0 ? sh : whRaw;
-
-  // Worked hours are only "physical worked". Full-flag days are not physically worked.
-  const workedPhysical = isAnyFullFlag(r) ? 0 : Math.min(whRaw, baseShift);
-
-  let remainder = round2(Math.max(0, baseShift - workedPhysical));
+  const workedPhysical = isOffFullFlag(r) ? 0 : whRaw;
 
   const out = {
-    worked: workedPhysical,
+    worked: workedPhysical, // physical
     hol: 0,
     lieu: 0,
     bankHol: 0,
@@ -164,67 +163,67 @@ function computeRowBreakdown(r: ShiftRow) {
     night: 0,
   };
 
-  // FULL flags: consume the whole baseShift (and remainder becomes 0)
+  // ----- allocate flags on the SCHEDULED portion -----
+  // FULL flags (off types): consume scheduled portion
   if (r.unpaidFlag === "Y") {
-    out.unpaidFull = baseShift;
-    remainder = 0;
+    out.unpaidFull = scheduledPortion;
   } else if (r.holidayFlag === "Y") {
-    out.hol = baseShift;
-    remainder = 0;
+    out.hol = scheduledPortion;
   } else if (r.lieuFlag === "Y") {
-    out.lieu = baseShift;
-    remainder = 0;
+    out.lieu = scheduledPortion;
   } else if (r.bankHolFlag === "Y") {
-    out.bankHol = baseShift;
-    remainder = 0;
+    out.bankHol = scheduledPortion;
   } else if (r.doubleFlag === "Y") {
-    out.dbl = baseShift;
-    remainder = 0;
+    // Double full = scheduled portion paid at double (still worked physically)
+    out.dbl = scheduledPortion;
   } else {
-    // PART flags: consume the remaining (non-worked) portion once, in priority order
-    if (r.unpaidFlag === "P" && remainder > 0) {
-      out.unpaidPart += remainder;
+    // PART flags: consume ONLY the remainder of the scheduled shift (scheduled - worked)
+    let remainder = round2(Math.max(0, scheduledPortion - workedPhysical));
+
+    const takeRemainder = () => {
+      const amt = remainder;
       remainder = 0;
-    }
-    if (r.holidayFlag === "P" && remainder > 0) {
-      out.hol += remainder;
-      remainder = 0;
-    }
-    if (r.lieuFlag === "P" && remainder > 0) {
-      out.lieu += remainder;
-      remainder = 0;
-    }
-    if (r.bankHolFlag === "P" && remainder > 0) {
-      out.bankHol += remainder;
-      remainder = 0;
-    }
-    if (r.doubleFlag === "P" && remainder > 0) {
-      out.dbl += remainder;
-      remainder = 0;
-    }
+      return amt;
+    };
+
+    if (r.unpaidFlag === "P" && remainder > 0) out.unpaidPart += takeRemainder();
+    if (r.holidayFlag === "P" && remainder > 0) out.hol += takeRemainder();
+    if (r.lieuFlag === "P" && remainder > 0) out.lieu += takeRemainder();
+    if (r.bankHolFlag === "P" && remainder > 0) out.bankHol += takeRemainder();
+    if (r.doubleFlag === "P" && remainder > 0) out.dbl += takeRemainder();
   }
 
-  // Premiums
+  // ----- premiums -----
   const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
-  if (!premiumsBlocked && baseShift > 0 && r.startTime) {
-    const premiumsProtected = r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
+  const premiumsProtected = r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
 
-    // If protected and we have scheduled hours, compute premiums across the scheduled shift length.
-    // Otherwise compute on actual worked window.
-    const premEnd =
-      premiumsProtected && sh > 0
-        ? addHoursToTime(r.startTime, sh)
-        : r.endTime;
+  if (!premiumsBlocked && r.startTime) {
+    let premEnd = r.endTime;
 
-    const p = computeLateNightHours(r.startTime, premEnd);
-
-    // If it's NOT protected, only pay premiums when there is physical worked time
     if (premiumsProtected) {
+      // scheduled end if we can compute it
+      const schedEnd = sh > 0 ? addHoursToTime(r.startTime, sh) : r.endTime;
+
+      const isDouble = r.doubleFlag !== "";
+
+      // Double: if worked exceeds scheduled, use actual end to include extra premiums (e.g. 22–05 = 7h)
+      if (isDouble && sh > 0 && workedPhysical > sh && r.endTime) {
+        premEnd = r.endTime;
+      } else {
+        // LIEU/BH (and Double when not exceeding scheduled): use scheduled end
+        premEnd = schedEnd;
+      }
+
+      const p = computeLateNightHours(r.startTime, premEnd);
       out.late += clampNonNeg(p.lateHours);
       out.night += clampNonNeg(p.nightHours);
-    } else if (workedPhysical > 0) {
-      out.late += clampNonNeg(p.lateHours);
-      out.night += clampNonNeg(p.nightHours);
+    } else {
+      // Not protected: only if physically worked
+      if (workedPhysical > 0) {
+        const p = computeLateNightHours(r.startTime, r.endTime);
+        out.late += clampNonNeg(p.lateHours);
+        out.night += clampNonNeg(p.nightHours);
+      }
     }
   }
 
@@ -232,13 +231,9 @@ function computeRowBreakdown(r: ShiftRow) {
 }
 
 export default function Home() {
-  // Settings (from lib + localStorage)
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-
-  // Month rows
   const [rows, setRows] = useState<ShiftRow[]>([]);
 
-  // Daily inputs
   const [date, setDate] = useState<string>(() => {
     const d = new Date();
     const yyyy = d.getFullYear();
@@ -259,7 +254,6 @@ export default function Home() {
 
   const [sickHours, setSickHours] = useState<string>("");
 
-  // Load saved data
   useEffect(() => {
     try {
       const s = getSettings();
@@ -278,7 +272,6 @@ export default function Home() {
     }
   }, []);
 
-  // Persist month rows
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_MONTH, JSON.stringify(rows));
@@ -287,48 +280,48 @@ export default function Home() {
     }
   }, [rows]);
 
-  // Computed for "This shift"
-  const workedHours = useMemo(() => computeWorkedHours(startTime, endTime), [startTime, endTime]);
+  const workedHours = useMemo(
+    () => computeWorkedHours(startTime, endTime),
+    [startTime, endTime]
+  );
 
-  // DAILY premiums (same rules as monthly)
+  // DAILY premiums (mirror monthly logic)
   const prem = useMemo(() => {
     const sh = clampNonNeg(Number(scheduledHours) || 0);
     const wh = clampNonNeg(computeWorkedHours(startTime, endTime));
 
-    // Full HOL / Full Unpaid block premiums completely
-    if (holidayFlag === "Y" || unpaidFlag === "Y") return { lateHours: 0, nightHours: 0 };
-
+    const premiumsBlocked = holidayFlag === "Y" || unpaidFlag === "Y";
     const premiumsProtected = lieuFlag !== "" || bankHolFlag !== "" || doubleFlag !== "";
 
-    const premEnd =
-      premiumsProtected && sh > 0
-        ? addHoursToTime(startTime, sh)
-        : endTime;
+    if (premiumsBlocked || !startTime) return { lateHours: 0, nightHours: 0 };
 
-    const p = computeLateNightHours(startTime, premEnd);
+    if (premiumsProtected) {
+      const schedEnd = sh > 0 ? addHoursToTime(startTime, sh) : endTime;
 
-    // If not protected, only allow premiums when there is physical worked time
-    if (!premiumsProtected && wh <= 0) return { lateHours: 0, nightHours: 0 };
+      // Double: if worked > scheduled, use actual end
+      const isDouble = doubleFlag !== "";
+      const premEnd = isDouble && sh > 0 && wh > sh && endTime ? endTime : schedEnd;
 
-    return p;
+      return computeLateNightHours(startTime, premEnd);
+    }
+
+    // Not protected: only if physically worked
+    if (wh <= 0) return { lateHours: 0, nightHours: 0 };
+    return computeLateNightHours(startTime, endTime);
   }, [startTime, endTime, scheduledHours, holidayFlag, unpaidFlag, lieuFlag, bankHolFlag, doubleFlag]);
 
-  // Month totals + pay
   const month = useMemo(() => {
     const tot = {
       worked: 0,       // physical worked
-      qualifying: 0,   // counts for OT trigger
+      qualifying: 0,   // trigger for OT
       std: 0,
-      ot: 0,           // OT PAID hours (worked only)
-
+      ot: 0,           // PAID OT hours (worked only, excluding double)
       late: 0,
       night: 0,
-
       hol: 0,
       lieu: 0,
       bankHol: 0,
       dbl: 0,
-
       unpaidFull: 0,
       unpaidPart: 0,
       sick: 0,
@@ -364,22 +357,30 @@ export default function Home() {
 
       tot.unpaidFull += b.unpaidFull;
       tot.unpaidPart += b.unpaidPart;
-
       tot.sick += b.sick;
 
       tot.late += b.late;
       tot.night += b.night;
     }
 
+    tot.worked = round2(tot.worked);
+    tot.hol = round2(tot.hol);
+    tot.lieu = round2(tot.lieu);
+    tot.bankHol = round2(tot.bankHol);
+    tot.dbl = round2(tot.dbl);
+    tot.late = round2(tot.late);
+    tot.night = round2(tot.night);
+
     // Qualifying counts toward OT trigger (NOT unpaid)
     tot.qualifying = round2(tot.worked + tot.hol + tot.lieu + tot.bankHol + tot.dbl);
 
-    // OT triggered by qualifying, but paid only on worked
+    // OT triggered by qualifying,
+    // but OT PAID can only come from hours that are physically worked AND not already paid as Double.
     const otRaw = Math.max(0, tot.qualifying - otThreshold);
-    tot.ot = round2(Math.min(tot.worked, otRaw));
+    const workedAvailableForStdOt = Math.max(0, tot.worked - tot.dbl);
 
-    // STD is remaining worked hours after OT paid hours
-    tot.std = round2(Math.max(0, tot.worked - tot.ot));
+    tot.ot = round2(Math.min(workedAvailableForStdOt, otRaw));
+    tot.std = round2(Math.max(0, workedAvailableForStdOt - tot.ot));
 
     // PAY
     tot.stdPay = round2(tot.std * base);
@@ -391,6 +392,8 @@ export default function Home() {
 
     tot.lieuPay = round2(tot.lieu * base);
     tot.bankHolPay = round2(tot.bankHol * base);
+
+    // Double pay: base * doubleRate (NOT base + base again)
     tot.doublePay = round2(tot.dbl * base * doubleRate);
 
     tot.holPay = round2(tot.hol * holRate);
@@ -432,13 +435,11 @@ export default function Home() {
       scheduledHours: sh,
       startTime: startTime || "",
       endTime: endTime || "",
-
       holidayFlag,
       unpaidFlag,
       lieuFlag,
       bankHolFlag,
       doubleFlag,
-
       sickHours: sick,
     };
 
@@ -470,23 +471,7 @@ export default function Home() {
 
     const rowsCsv = rows.map((r) => {
       const worked = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
-      const sh = clampNonNeg(Number(r.scheduledHours) || 0);
-
-      // Premiums in CSV should match the same rule set (blocked only full hol/unpaid; protected for lieu/bh/double)
-      let late = 0;
-      let night = 0;
-
-      const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
-      if (!premiumsBlocked && r.startTime) {
-        const premiumsProtected = r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
-        const premEnd = premiumsProtected && sh > 0 ? addHoursToTime(r.startTime, sh) : r.endTime;
-        const p = computeLateNightHours(r.startTime, premEnd);
-
-        if (premiumsProtected || worked > 0) {
-          late = p.lateHours;
-          night = p.nightHours;
-        }
-      }
+      const b = computeRowBreakdown(r);
 
       const cells = [
         r.date,
@@ -494,8 +479,8 @@ export default function Home() {
         r.endTime,
         String(r.scheduledHours ?? 0),
         String(worked),
-        String(late),
-        String(night),
+        String(b.late),
+        String(b.night),
         r.holidayFlag,
         r.unpaidFlag,
         r.lieuFlag,
@@ -542,9 +527,7 @@ export default function Home() {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Wage Check</h1>
-          <p className="text-xs text-gray-600 dark:text-white/60">
-            Saved locally on this device only.
-          </p>
+          <p className="text-xs text-gray-600 dark:text-white/60">Saved locally on this device only.</p>
         </div>
 
         <div className="flex gap-2">
@@ -656,10 +639,7 @@ export default function Home() {
           </div>
         </div>
 
-        <button
-          className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold"
-          onClick={saveDayToMonth}
-        >
+        <button className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold" onClick={saveDayToMonth}>
           Save day to month
         </button>
       </div>
