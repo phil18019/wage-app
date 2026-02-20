@@ -95,13 +95,6 @@ function computeLateNightHours(startTime: string, endTime: string) {
   };
 }
 
-function splitByFlag(flag: Flag, hours: number) {
-  const h = clampNonNeg(hours);
-  if (flag === "Y") return { flagged: h, remaining: 0 };
-  if (flag === "P") return { flagged: round2(h / 2), remaining: round2(h / 2) };
-  return { flagged: 0, remaining: h };
-}
-
 function downloadText(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -122,6 +115,122 @@ function addHoursToTime(startTime: string, hours: number) {
   return `${hh}:${mm}`;
 }
 
+function isFullFlag(flag: Flag) {
+  return flag === "Y";
+}
+
+function isAnyFullFlag(r: Pick<ShiftRow, "holidayFlag" | "unpaidFlag" | "lieuFlag" | "bankHolFlag" | "doubleFlag">) {
+  return (
+    isFullFlag(r.unpaidFlag) ||
+    isFullFlag(r.holidayFlag) ||
+    isFullFlag(r.lieuFlag) ||
+    isFullFlag(r.bankHolFlag) ||
+    isFullFlag(r.doubleFlag)
+  );
+}
+
+/**
+ * Business rules implemented:
+ * - "Worked" = physically worked hours from times, unless ANY FULL flag (Y) is set -> worked becomes 0.
+ * - PART flags (P) consume the remainder of the scheduled shift AFTER worked hours:
+ *   remainder = max(0, scheduled - worked)
+ *   That remainder is allocated in order: Unpaid(P) -> Holiday(P) -> Lieu(P) -> BH(P) -> Double(P)
+ * - Premiums:
+ *   - Blocked only for FULL Holiday (Y) or FULL Unpaid (Y)
+ *   - If LIEU/BH/Double present (Y or P), premiums are "protected" across the scheduled shift end (start + scheduledHours)
+ *   - Otherwise premiums apply only to the actual worked time window (start->end)
+ */
+function computeRowBreakdown(r: ShiftRow) {
+  const whRaw = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
+  const sh = clampNonNeg(Number(r.scheduledHours) || 0);
+
+  const baseShift = sh > 0 ? sh : whRaw;
+
+  // Worked hours are only "physical worked". Full-flag days are not physically worked.
+  const workedPhysical = isAnyFullFlag(r) ? 0 : Math.min(whRaw, baseShift);
+
+  let remainder = round2(Math.max(0, baseShift - workedPhysical));
+
+  const out = {
+    worked: workedPhysical,
+    hol: 0,
+    lieu: 0,
+    bankHol: 0,
+    dbl: 0,
+    unpaidFull: 0,
+    unpaidPart: 0,
+    sick: clampNonNeg(Number(r.sickHours) || 0),
+    late: 0,
+    night: 0,
+  };
+
+  // FULL flags: consume the whole baseShift (and remainder becomes 0)
+  if (r.unpaidFlag === "Y") {
+    out.unpaidFull = baseShift;
+    remainder = 0;
+  } else if (r.holidayFlag === "Y") {
+    out.hol = baseShift;
+    remainder = 0;
+  } else if (r.lieuFlag === "Y") {
+    out.lieu = baseShift;
+    remainder = 0;
+  } else if (r.bankHolFlag === "Y") {
+    out.bankHol = baseShift;
+    remainder = 0;
+  } else if (r.doubleFlag === "Y") {
+    out.dbl = baseShift;
+    remainder = 0;
+  } else {
+    // PART flags: consume the remaining (non-worked) portion once, in priority order
+    if (r.unpaidFlag === "P" && remainder > 0) {
+      out.unpaidPart += remainder;
+      remainder = 0;
+    }
+    if (r.holidayFlag === "P" && remainder > 0) {
+      out.hol += remainder;
+      remainder = 0;
+    }
+    if (r.lieuFlag === "P" && remainder > 0) {
+      out.lieu += remainder;
+      remainder = 0;
+    }
+    if (r.bankHolFlag === "P" && remainder > 0) {
+      out.bankHol += remainder;
+      remainder = 0;
+    }
+    if (r.doubleFlag === "P" && remainder > 0) {
+      out.dbl += remainder;
+      remainder = 0;
+    }
+  }
+
+  // Premiums
+  const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
+  if (!premiumsBlocked && baseShift > 0 && r.startTime) {
+    const premiumsProtected = r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
+
+    // If protected and we have scheduled hours, compute premiums across the scheduled shift length.
+    // Otherwise compute on actual worked window.
+    const premEnd =
+      premiumsProtected && sh > 0
+        ? addHoursToTime(r.startTime, sh)
+        : r.endTime;
+
+    const p = computeLateNightHours(r.startTime, premEnd);
+
+    // If it's NOT protected, only pay premiums when there is physical worked time
+    if (premiumsProtected) {
+      out.late += clampNonNeg(p.lateHours);
+      out.night += clampNonNeg(p.nightHours);
+    } else if (workedPhysical > 0) {
+      out.late += clampNonNeg(p.lateHours);
+      out.night += clampNonNeg(p.nightHours);
+    }
+  }
+
+  return out;
+}
+
 export default function Home() {
   // Settings (from lib + localStorage)
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -129,7 +238,7 @@ export default function Home() {
   // Month rows
   const [rows, setRows] = useState<ShiftRow[]>([]);
 
-  // Daily inputs (strings so they can be empty)
+  // Daily inputs
   const [date, setDate] = useState<string>(() => {
     const d = new Date();
     const yyyy = d.getFullYear();
@@ -179,48 +288,38 @@ export default function Home() {
   }, [rows]);
 
   // Computed for "This shift"
-  const workedHours = useMemo(
-    () => computeWorkedHours(startTime, endTime),
-    [startTime, endTime]
-  );
+  const workedHours = useMemo(() => computeWorkedHours(startTime, endTime), [startTime, endTime]);
 
-  // DAILY premiums (fixed deps + correct rules)
+  // DAILY premiums (same rules as monthly)
   const prem = useMemo(() => {
     const sh = clampNonNeg(Number(scheduledHours) || 0);
+    const wh = clampNonNeg(computeWorkedHours(startTime, endTime));
 
     // Full HOL / Full Unpaid block premiums completely
-    if (holidayFlag === "Y" || unpaidFlag === "Y") {
-      return { lateHours: 0, nightHours: 0 };
-    }
+    if (holidayFlag === "Y" || unpaidFlag === "Y") return { lateHours: 0, nightHours: 0 };
 
-    // Protect premiums for LIEU/BH/Double using scheduled hours end if present
-    const premiumsProtected =
-      lieuFlag !== "" || bankHolFlag !== "" || doubleFlag !== "";
+    const premiumsProtected = lieuFlag !== "" || bankHolFlag !== "" || doubleFlag !== "";
 
     const premEnd =
       premiumsProtected && sh > 0
         ? addHoursToTime(startTime, sh)
         : endTime;
 
-    return computeLateNightHours(startTime, premEnd);
-  }, [
-    startTime,
-    endTime,
-    scheduledHours,
-    holidayFlag,
-    unpaidFlag,
-    lieuFlag,
-    bankHolFlag,
-    doubleFlag,
-  ]);
+    const p = computeLateNightHours(startTime, premEnd);
+
+    // If not protected, only allow premiums when there is physical worked time
+    if (!premiumsProtected && wh <= 0) return { lateHours: 0, nightHours: 0 };
+
+    return p;
+  }, [startTime, endTime, scheduledHours, holidayFlag, unpaidFlag, lieuFlag, bankHolFlag, doubleFlag]);
 
   // Month totals + pay
   const month = useMemo(() => {
     const tot = {
-      worked: 0,
-      qualifying: 0,
+      worked: 0,       // physical worked
+      qualifying: 0,   // counts for OT trigger
       std: 0,
-      ot: 0,
+      ot: 0,           // OT PAID hours (worked only)
 
       late: 0,
       night: 0,
@@ -234,7 +333,6 @@ export default function Home() {
       unpaidPart: 0,
       sick: 0,
 
-      // pay breakdown
       stdPay: 0,
       otPay: 0,
       sickPay: 0,
@@ -247,7 +345,6 @@ export default function Home() {
       totalPay: 0,
     };
 
-    // SETTINGS
     const base = clampNonNeg(settings.baseRate);
     const otAdd = clampNonNeg(settings.otAddOn);
     const lateAdd = clampNonNeg(settings.latePremium);
@@ -257,66 +354,32 @@ export default function Home() {
     const doubleRate = clampNonNeg(settings.doubleRate);
 
     for (const r of rows) {
-      const wh = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
-      const shRow = clampNonNeg(Number(r.scheduledHours) || 0);
-      const sick = clampNonNeg(Number(r.sickHours) || 0);
+      const b = computeRowBreakdown(r);
 
-      // Use scheduled hours for splitting flags (PART = half the shift)
-      let remaining = shRow > 0 ? shRow : wh;
+      tot.worked += b.worked;
+      tot.hol += b.hol;
+      tot.lieu += b.lieu;
+      tot.bankHol += b.bankHol;
+      tot.dbl += b.dbl;
 
-      const unpaidSplit = splitByFlag(r.unpaidFlag, remaining);
-      remaining = unpaidSplit.remaining;
-      tot.unpaidFull += r.unpaidFlag === "Y" ? unpaidSplit.flagged : 0;
-      tot.unpaidPart += r.unpaidFlag === "P" ? unpaidSplit.flagged : 0;
+      tot.unpaidFull += b.unpaidFull;
+      tot.unpaidPart += b.unpaidPart;
 
-      const holSplit = splitByFlag(r.holidayFlag, remaining);
-      remaining = holSplit.remaining;
-      tot.hol += holSplit.flagged;
+      tot.sick += b.sick;
 
-      const lieuSplit = splitByFlag(r.lieuFlag, remaining);
-      remaining = lieuSplit.remaining;
-      tot.lieu += lieuSplit.flagged;
-
-      const bhSplit = splitByFlag(r.bankHolFlag, remaining);
-      remaining = bhSplit.remaining;
-      tot.bankHol += bhSplit.flagged;
-
-      const dblSplit = splitByFlag(r.doubleFlag, remaining);
-      remaining = dblSplit.remaining;
-      tot.dbl += dblSplit.flagged;
-
-      tot.worked += remaining;
-      tot.sick += sick;
-
-      // MONTH premiums (correct rules + actually accumulates)
-      const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
-
-      if (!premiumsBlocked) {
-        const premiumsProtected =
-          r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
-
-        const premEnd =
-          premiumsProtected && shRow > 0
-            ? addHoursToTime(r.startTime, shRow)
-            : r.endTime;
-
-        const p = computeLateNightHours(r.startTime, premEnd);
-        tot.late += clampNonNeg(p.lateHours);
-        tot.night += clampNonNeg(p.nightHours);
-      }
+      tot.late += b.late;
+      tot.night += b.night;
     }
 
-    // QUALIFYING HOURS (counts toward OT trigger)
-    tot.qualifying = tot.worked + tot.hol + tot.lieu + tot.bankHol + tot.dbl;
+    // Qualifying counts toward OT trigger (NOT unpaid)
+    tot.qualifying = round2(tot.worked + tot.hol + tot.lieu + tot.bankHol + tot.dbl);
 
-    // OT triggered by qualifying hours
-    tot.ot = Math.max(0, tot.qualifying - otThreshold);
+    // OT triggered by qualifying, but paid only on worked
+    const otRaw = Math.max(0, tot.qualifying - otThreshold);
+    tot.ot = round2(Math.min(tot.worked, otRaw));
 
-    // OT can only be PAID on hours actually worked (tot.worked)
-    const otPaid = Math.min(tot.worked, tot.ot);
-
-    // STD is remaining worked hours after paid OT
-    tot.std = Math.max(0, tot.worked - otPaid);
+    // STD is remaining worked hours after OT paid hours
+    tot.std = round2(Math.max(0, tot.worked - tot.ot));
 
     // PAY
     tot.stdPay = round2(tot.std * base);
@@ -406,16 +469,33 @@ export default function Home() {
     ].join(",");
 
     const rowsCsv = rows.map((r) => {
-      const wh = computeWorkedHours(r.startTime, r.endTime);
-      const p = computeLateNightHours(r.startTime, r.endTime);
+      const worked = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
+      const sh = clampNonNeg(Number(r.scheduledHours) || 0);
+
+      // Premiums in CSV should match the same rule set (blocked only full hol/unpaid; protected for lieu/bh/double)
+      let late = 0;
+      let night = 0;
+
+      const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
+      if (!premiumsBlocked && r.startTime) {
+        const premiumsProtected = r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
+        const premEnd = premiumsProtected && sh > 0 ? addHoursToTime(r.startTime, sh) : r.endTime;
+        const p = computeLateNightHours(r.startTime, premEnd);
+
+        if (premiumsProtected || worked > 0) {
+          late = p.lateHours;
+          night = p.nightHours;
+        }
+      }
+
       const cells = [
         r.date,
         r.startTime,
         r.endTime,
         String(r.scheduledHours ?? 0),
-        String(wh),
-        String(p.lateHours),
-        String(p.nightHours),
+        String(worked),
+        String(late),
+        String(night),
         r.holidayFlag,
         r.unpaidFlag,
         r.lieuFlag,
@@ -468,16 +548,10 @@ export default function Home() {
         </div>
 
         <div className="flex gap-2">
-          <Link
-            href="/help"
-            className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
-          >
+          <Link href="/help" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
             Help
           </Link>
-          <Link
-            href="/settings"
-            className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
-          >
+          <Link href="/settings" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
             Settings
           </Link>
         </div>
@@ -490,12 +564,7 @@ export default function Home() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <div className={label}>Date</div>
-            <input
-              type="date"
-              className={input}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <input type="date" className={input} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
 
           <div>
@@ -511,33 +580,17 @@ export default function Home() {
 
           <div>
             <div className={label}>Start</div>
-            <input
-              type="time"
-              step="60"
-              className={input}
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
+            <input type="time" step="60" className={input} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
           </div>
 
           <div>
             <div className={label}>Finish</div>
-            <input
-              type="time"
-              step="60"
-              className={input}
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
+            <input type="time" step="60" className={input} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
           </div>
 
           <div>
             <div className={label}>Holiday (Y/P)</div>
-            <select
-              className={input}
-              value={holidayFlag}
-              onChange={(e) => setHolidayFlag(e.target.value as Flag)}
-            >
+            <select className={input} value={holidayFlag} onChange={(e) => setHolidayFlag(e.target.value as Flag)}>
               <option value="">-</option>
               <option value="Y">Y</option>
               <option value="P">P</option>
@@ -546,11 +599,7 @@ export default function Home() {
 
           <div>
             <div className={label}>Unpaid (Y/P)</div>
-            <select
-              className={input}
-              value={unpaidFlag}
-              onChange={(e) => setUnpaidFlag(e.target.value as Flag)}
-            >
+            <select className={input} value={unpaidFlag} onChange={(e) => setUnpaidFlag(e.target.value as Flag)}>
               <option value="">-</option>
               <option value="Y">Y</option>
               <option value="P">P</option>
@@ -559,11 +608,7 @@ export default function Home() {
 
           <div>
             <div className={label}>LIEU (Y/P)</div>
-            <select
-              className={input}
-              value={lieuFlag}
-              onChange={(e) => setLieuFlag(e.target.value as Flag)}
-            >
+            <select className={input} value={lieuFlag} onChange={(e) => setLieuFlag(e.target.value as Flag)}>
               <option value="">-</option>
               <option value="Y">Y</option>
               <option value="P">P</option>
@@ -572,11 +617,7 @@ export default function Home() {
 
           <div>
             <div className={label}>BH (Y/P)</div>
-            <select
-              className={input}
-              value={bankHolFlag}
-              onChange={(e) => setBankHolFlag(e.target.value as Flag)}
-            >
+            <select className={input} value={bankHolFlag} onChange={(e) => setBankHolFlag(e.target.value as Flag)}>
               <option value="">-</option>
               <option value="Y">Y</option>
               <option value="P">P</option>
@@ -585,11 +626,7 @@ export default function Home() {
 
           <div>
             <div className={label}>Double (Y/P)</div>
-            <select
-              className={input}
-              value={doubleFlag}
-              onChange={(e) => setDoubleFlag(e.target.value as Flag)}
-            >
+            <select className={input} value={doubleFlag} onChange={(e) => setDoubleFlag(e.target.value as Flag)}>
               <option value="">-</option>
               <option value="Y">Y</option>
               <option value="P">P</option>
@@ -598,35 +635,21 @@ export default function Home() {
 
           <div>
             <div className={label}>Sick hours</div>
-            <input
-              className={input}
-              value={sickHours}
-              onChange={(e) => setSickHours(e.target.value)}
-              placeholder="0"
-              inputMode="decimal"
-            />
+            <input className={input} value={sickHours} onChange={(e) => setSickHours(e.target.value)} placeholder="0" inputMode="decimal" />
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
-            <div className="text-sm text-gray-700 dark:text-white/70">
-              Worked hours
-            </div>
-            <div className="text-xl font-bold text-gray-900 dark:text-white">
-              {workedHours}
-            </div>
+            <div className="text-sm text-gray-700 dark:text-white/70">Worked hours</div>
+            <div className="text-xl font-bold text-gray-900 dark:text-white">{workedHours}</div>
           </div>
 
           <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
-            <div className="text-sm text-gray-700 dark:text-white/70">
-              Premiums today (Late / Night)
-            </div>
-
+            <div className="text-sm text-gray-700 dark:text-white/70">Premiums today (Late / Night)</div>
             <div className="text-xl font-bold text-gray-900 dark:text-white">
               {prem.lateHours} / {prem.nightHours}
             </div>
-
             <div className="text-xs text-gray-600 dark:text-white/50 mt-1">
               Late window 14:00–22:00 • Night window 22:00–06:00
             </div>
@@ -646,16 +669,10 @@ export default function Home() {
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
           <div className="text-lg font-semibold">This month</div>
           <div className="flex gap-2">
-            <button
-              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold"
-              onClick={exportCSV}
-            >
+            <button className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold" onClick={exportCSV}>
               Export CSV
             </button>
-            <button
-              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
-              onClick={clearMonth}
-            >
+            <button className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold" onClick={clearMonth}>
               Clear Month
             </button>
           </div>
@@ -663,82 +680,36 @@ export default function Home() {
 
         <div className="text-lg font-semibold mb-2">Hours</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-          <div>
-            Total Worked: <b>{month.worked}</b>
-          </div>
-          <div>
-            Qualifying (for {settings.otThreshold}): <b>{month.qualifying}</b>
-          </div>
-          <div>
-            STD Hours: <b>{month.std}</b>
-          </div>
-          <div>
-            OT Hours: <b>{month.ot}</b>
-          </div>
-          <div>
-            Late Prem: <b>{month.late}</b>
-          </div>
-          <div>
-            Night Prem: <b>{month.night}</b>
-          </div>
-          <div>
-            HOL Hours: <b>{month.hol}</b>
-          </div>
-          <div>
-            LIEU Hours: <b>{month.lieu}</b>
-          </div>
-          <div>
-            BH Hours: <b>{month.bankHol}</b>
-          </div>
-          <div>
-            Double Hours: <b>{month.dbl}</b>
-          </div>
-          <div>
-            Unpaid (Full): <b>{month.unpaidFull}</b>
-          </div>
-          <div>
-            Unpaid (Part): <b>{month.unpaidPart}</b>
-          </div>
-          <div>
-            Sick Hours: <b>{month.sick}</b>
-          </div>
+          <div>Total Worked: <b>{month.worked}</b></div>
+          <div>Qualifying (for {settings.otThreshold}): <b>{month.qualifying}</b></div>
+          <div>STD Hours: <b>{month.std}</b></div>
+          <div>OT Hours: <b>{month.ot}</b></div>
+          <div>Late Prem: <b>{month.late}</b></div>
+          <div>Night Prem: <b>{month.night}</b></div>
+          <div>HOL Hours: <b>{month.hol}</b></div>
+          <div>LIEU Hours: <b>{month.lieu}</b></div>
+          <div>BH Hours: <b>{month.bankHol}</b></div>
+          <div>Double Hours: <b>{month.dbl}</b></div>
+          <div>Unpaid (Full): <b>{month.unpaidFull}</b></div>
+          <div>Unpaid (Part): <b>{month.unpaidPart}</b></div>
+          <div>Sick Hours: <b>{month.sick}</b></div>
         </div>
 
         <div className="pt-4 mt-4 border-t border-white/20">
           <div className="text-lg font-semibold mb-2">Pay (£)</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-            <div>
-              STD pay: <b>{fmtGBP(month.stdPay)}</b>
-            </div>
-            <div>
-              OT pay: <b>{fmtGBP(month.otPay)}</b>
-            </div>
-            <div>
-              Sick pay: <b>{fmtGBP(month.sickPay)}</b>
-            </div>
-            <div>
-              Late add-on: <b>{fmtGBP(month.lateAddPay)}</b>
-            </div>
-            <div>
-              Night add-on: <b>{fmtGBP(month.nightAddPay)}</b>
-            </div>
-            <div>
-              LIEU pay: <b>{fmtGBP(month.lieuPay)}</b>
-            </div>
-            <div>
-              BH pay: <b>{fmtGBP(month.bankHolPay)}</b>
-            </div>
-            <div>
-              Double pay: <b>{fmtGBP(month.doublePay)}</b>
-            </div>
-            <div>
-              Holiday pay: <b>{fmtGBP(month.holPay)}</b>
-            </div>
+            <div>STD pay: <b>{fmtGBP(month.stdPay)}</b></div>
+            <div>OT pay: <b>{fmtGBP(month.otPay)}</b></div>
+            <div>Sick pay: <b>{fmtGBP(month.sickPay)}</b></div>
+            <div>Late add-on: <b>{fmtGBP(month.lateAddPay)}</b></div>
+            <div>Night add-on: <b>{fmtGBP(month.nightAddPay)}</b></div>
+            <div>LIEU pay: <b>{fmtGBP(month.lieuPay)}</b></div>
+            <div>BH pay: <b>{fmtGBP(month.bankHolPay)}</b></div>
+            <div>Double pay: <b>{fmtGBP(month.doublePay)}</b></div>
+            <div>Holiday pay: <b>{fmtGBP(month.holPay)}</b></div>
           </div>
 
-          <div className="mt-3 text-base font-semibold">
-            Total: {fmtGBP(month.totalPay)}
-          </div>
+          <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
         </div>
       </div>
 
@@ -762,30 +733,14 @@ export default function Home() {
                   </div>
 
                   <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-white/80">
-                    <div>
-                      Scheduled: <b>{r.scheduledHours ?? 0}</b>
-                    </div>
-                    <div>
-                      Worked: <b>{wh}</b>
-                    </div>
-                    <div>
-                      Holiday (Y/P): <b>{r.holidayFlag || "-"}</b>
-                    </div>
-                    <div>
-                      Unpaid (Y/P): <b>{r.unpaidFlag || "-"}</b>
-                    </div>
-                    <div>
-                      LIEU (Y/P): <b>{r.lieuFlag || "-"}</b>
-                    </div>
-                    <div>
-                      BH (Y/P): <b>{r.bankHolFlag || "-"}</b>
-                    </div>
-                    <div>
-                      Double (Y/P): <b>{r.doubleFlag || "-"}</b>
-                    </div>
-                    <div>
-                      Sick: <b>{r.sickHours ?? 0}</b>
-                    </div>
+                    <div>Scheduled: <b>{r.scheduledHours ?? 0}</b></div>
+                    <div>Worked: <b>{wh}</b></div>
+                    <div>Holiday (Y/P): <b>{r.holidayFlag || "-"}</b></div>
+                    <div>Unpaid (Y/P): <b>{r.unpaidFlag || "-"}</b></div>
+                    <div>LIEU (Y/P): <b>{r.lieuFlag || "-"}</b></div>
+                    <div>BH (Y/P): <b>{r.bankHolFlag || "-"}</b></div>
+                    <div>Double (Y/P): <b>{r.doubleFlag || "-"}</b></div>
+                    <div>Sick: <b>{r.sickHours ?? 0}</b></div>
                   </div>
                 </div>
               );
