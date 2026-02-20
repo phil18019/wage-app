@@ -40,7 +40,7 @@ function fmtGBP(n: number) {
 
 function toMinutes(t: string) {
   // expects "HH:MM"
-  const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t.trim());
   if (!m) return NaN;
   const hh = Number(m[1]);
   const mm = Number(m[2]);
