@@ -245,13 +245,15 @@ const month = useMemo(() => {
     tot.worked += remaining;
 
     // premiums only apply if there are paid/working hours left after flags
-   const paidHours =
-  remaining + holSplit.flagged + lieuSplit.flagged + bhSplit.flagged + dblSplit.flagged;
+   // Premiums:
+   // Only blocked when the whole shift is Holiday or Unpaid.
+   // LIEU/BH/Double still earn premiums.
+  const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
 
-if (paidHours > 0) {
+ if (!premiumsBlocked && wh > 0) {
   tot.late += clampNonNeg(lateHours);
   tot.night += clampNonNeg(nightHours);
-}
+ }
 
     tot.sick += sick;
   }
