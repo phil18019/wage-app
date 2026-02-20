@@ -530,7 +530,7 @@ export default function Home() {
     <img
       src="/icon-192.png"
       alt="Wage Check logo"
-      className="h-10 w-10 rounded-xl"
+      className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl shadow-md"
     />
 
     <div>
