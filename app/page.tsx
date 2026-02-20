@@ -170,161 +170,126 @@ export default function Home() {
   const workedHours = useMemo(() => computeWorkedHours(startTime, endTime), [startTime, endTime]);
   const prem = useMemo(() => computeLateNightHours(startTime, endTime), [startTime, endTime]);
 
-  // Month totals + pay
-  const month = useMemo(() => {
-    const tot = {
-      worked: 0,
-      qualifying: 0,
-      std: 0,
-      ot: 0,
+ // Month totals + pay
+const month = useMemo(() => {
+  const tot = {
+    worked: 0,
+    qualifying: 0,
+    std: 0,
+    ot: 0,
 
-      late: 0,
-      night: 0,
+    late: 0,
+    night: 0,
 
-      hol: 0,
-      lieu: 0,
-      bankHol: 0,
-      dbl: 0,
+    hol: 0,
+    lieu: 0,
+    bankHol: 0,
+    dbl: 0,
 
-      unpaidFull: 0,
-      unpaidPart: 0,
-      sick: 0,
+    unpaidFull: 0,
+    unpaidPart: 0,
+    sick: 0,
 
-      stdPay: 0,
-      otPay: 0,
-      sickPay: 0,
-      lateAddPay: 0,
-      nightAddPay: 0,
-      holPay: 0,
-      lieuPay: 0,
-      bankHolPay: 0,
-      doublePay: 0,
+    // pay breakdown
+    stdPay: 0,
+    otPay: 0,
+    sickPay: 0,
+    lateAddPay: 0,
+    nightAddPay: 0,
+    lieuPay: 0,
+    bankHolPay: 0,
+    doublePay: 0,
+    holPay: 0,
+    totalPay: 0,
+  };
 
-      totalPay: 0,
-    };
+  // SETTINGS (make sure these names match your lib/settings.ts Settings type)
+  const base = clampNonNeg(settings.baseRate);
+  const otAdd = clampNonNeg(settings.otAddOn);
+  const lateAdd = clampNonNeg(settings.latePremium);
+  const nightAdd = clampNonNeg(settings.nightPremium);
+  const holRate = clampNonNeg(settings.holidayRate);
+  const otThreshold = clampNonNeg(settings.otThreshold);
+  const doubleRate = clampNonNeg(settings.doubleRate);
 
-    // accumulate hours from rows
-    for (const r of rows) {
-      const wh = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
-      const { lateHours, nightHours } = computeLateNightHours(r.startTime, r.endTime);
-      const sick = clampNonNeg(Number(r.sickHours) || 0);
+  for (const r of rows) {
+    const wh = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
+    const { lateHours, nightHours } = computeLateNightHours(r.startTime, r.endTime);
+    const sick = clampNonNeg(Number(r.sickHours) || 0);
 
-      // flags consume the shift hours in an order (unpaid -> holiday -> lieu -> bankHol -> double -> remaining)
-      let remaining = wh;
+    let remaining = wh;
 
-      const unpaidSplit = splitByFlag(r.unpaidFlag, remaining);
-      remaining = unpaidSplit.remaining;
-      tot.unpaidFull += r.unpaidFlag === "Y" ? unpaidSplit.flagged : 0;
-      tot.unpaidPart += r.unpaidFlag === "P" ? unpaidSplit.flagged : 0;
+    const unpaidSplit = splitByFlag(r.unpaidFlag, remaining);
+    remaining = unpaidSplit.remaining;
+    tot.unpaidFull += r.unpaidFlag === "Y" ? unpaidSplit.flagged : 0;
+    tot.unpaidPart += r.unpaidFlag === "P" ? unpaidSplit.flagged : 0;
 
-      // --- HOL handling ---
-      // For P: holiday hours are the missing hours from the scheduled shift (scheduled - worked)
-      if (r.holidayFlag === "Y") {
-      // Full holiday: treat the whole scheduled shift as holiday, no worked hours
-      tot.hol += clampNonNeg(r.scheduledHours);
-      remaining = 0;
-      } else if (r.holidayFlag === "P") {
-      // Part holiday: holiday is the gap between scheduled and worked
-      const holHrs = Math.max(0, clampNonNeg(r.scheduledHours) - wh);
-      tot.hol += round2(holHrs);
-      remaining = wh; // keep all worked time as worked
-      }
+    const holSplit = splitByFlag(r.holidayFlag, remaining);
+    remaining = holSplit.remaining;
+    tot.hol += holSplit.flagged;
 
-      const lieuSplit = splitByFlag(r.lieuFlag, remaining);
-      remaining = lieuSplit.remaining;
-      tot.lieu += lieuSplit.flagged;
+    const lieuSplit = splitByFlag(r.lieuFlag, remaining);
+    remaining = lieuSplit.remaining;
+    tot.lieu += lieuSplit.flagged;
 
-      const bhSplit = splitByFlag(r.bankHolFlag, remaining);
-      remaining = bhSplit.remaining;
-      tot.bankHol += bhSplit.flagged;
+    const bhSplit = splitByFlag(r.bankHolFlag, remaining);
+    remaining = bhSplit.remaining;
+    tot.bankHol += bhSplit.flagged;
 
-      const dblSplit = splitByFlag(r.doubleFlag, remaining);
-      remaining = dblSplit.remaining;
-      tot.dbl += dblSplit.flagged;
+    const dblSplit = splitByFlag(r.doubleFlag, remaining);
+    remaining = dblSplit.remaining;
+    tot.dbl += dblSplit.flagged;
 
-      // remaining counts toward normal worked-for-calc
-      tot.worked += remaining;
+    tot.worked += remaining;
 
-      // premium hours are only meaningful on hours actually worked/paid (ignore if totally holiday/unpaid etc)
-      // (simple rule: if remaining > 0, count premiums; otherwise 0)
-      if (remaining > 0) {
-        tot.late += clampNonNeg(lateHours);
-        tot.night += clampNonNeg(nightHours);
-      }
-
-      tot.sick += sick;
+    // premiums only apply if there are paid/working hours left after flags
+    if (remaining > 0) {
+      tot.late += clampNonNeg(lateHours);
+      tot.night += clampNonNeg(nightHours);
     }
 
-    // Round hour totals
-    tot.worked = round2(tot.worked);
-    tot.hol = round2(tot.hol);
-    tot.lieu = round2(tot.lieu);
-    tot.bankHol = round2(tot.bankHol);
-    tot.dbl = round2(tot.dbl);
-    tot.unpaidFull = round2(tot.unpaidFull);
-    tot.unpaidPart = round2(tot.unpaidPart);
-    tot.sick = round2(tot.sick);
-    tot.late = round2(tot.late);
-    tot.night = round2(tot.night);
+    tot.sick += sick;
+  }
 
-   // --- Qualifying + OT split ---
-const threshold = clampNonNeg(settings.otThreshold);
+  // QUALIFYING HOURS (if you want hol + lieu to count toward OT, include them here)
+  tot.qualifying =
+    tot.worked +
+    tot.hol +
+    tot.lieu +
+    tot.bankHol +
+    tot.dbl;
 
-// Qualifying hours for OT (exclude unpaid + sick)
-tot.qualifying = round2(
-  tot.worked + tot.hol + tot.lieu + tot.bankHol + tot.dbl
-);
+  tot.std = Math.min(tot.qualifying, otThreshold);
+  tot.ot = Math.max(0, tot.qualifying - otThreshold);
 
-// Standard bucket is filled by non-worked paid categories first (HOL/LIEU/BH/DOUBLE)
-const bucketUsed = tot.hol + tot.lieu + tot.bankHol + tot.dbl;
-const bucketLeft = Math.max(0, threshold - bucketUsed);
+  // PAY
+  tot.stdPay = round2(tot.std * base);
+  tot.otPay = round2(tot.ot * (base + otAdd));
+  tot.sickPay = round2(tot.sick * base);
 
-// Worked hours that fit inside remaining STD bucket
-const stdWorked = Math.min(tot.worked, bucketLeft);
+  tot.lateAddPay = round2(tot.late * lateAdd);
+  tot.nightAddPay = round2(tot.night * nightAdd);
 
-// OT is only the leftover worked hours above the remaining bucket
-const otWorked = Math.max(0, tot.worked - stdWorked);
+  tot.lieuPay = round2(tot.lieu * base);
+  tot.bankHolPay = round2(tot.bankHol * base);
+  tot.doublePay = round2(tot.dbl * base * doubleRate);
 
-tot.std = round2(stdWorked);
-tot.ot = round2(otWorked);
+  tot.holPay = round2(tot.hol * holRate);
 
-    // Pay
-    const base = clampNonNeg(settings.baseRate);
-    const otAdd = clampNonNeg(settings.otAddOn);
-    const lateAdd = clampNonNeg(settings.latePremium);
-    const nightAdd = clampNonNeg(settings.nightPremium);
-    const holRate = clampNonNeg(settings.holidayRate);
-    const doubleRate = clampNonNeg(settings.doubleRate || 2);
+  tot.totalPay = round2(
+    tot.stdPay +
+      tot.otPay +
+      tot.sickPay +
+      tot.lateAddPay +
+      tot.nightAddPay +
+      tot.lieuPay +
+      tot.bankHolPay +
+      tot.doublePay +
+      tot.holPay
+  );
 
-    tot.stdPay = round2(tot.std * base);
-    tot.otPay = round2(tot.ot * (base + otAdd));
-    tot.sickPay = round2(tot.sick * base);
-
-    tot.lateAddPay = round2(tot.late * lateAdd);
-    tot.nightAddPay = round2(tot.night * nightAdd);
-
-    tot.lieuPay = round2(tot.lieu * base);
-    tot.bankHolPay = round2(tot.bankHol * base);
-
-    tot.doublePay = round2(tot.dbl * base * doubleRate);
-
-    // holiday is paid at holidayRate (full rate)
-    tot.holPay = round2(tot.hol * holRate);
-
-    tot.totalPay = round2(
-      tot.stdPay +
-        tot.otPay +
-        tot.sickPay +
-        tot.lateAddPay +
-        tot.nightAddPay +
-        tot.lieuPay +
-        tot.bankHolPay +
-        tot.doublePay +
-        tot.holPay
-    );
-
-    return tot;
-  }, [rows, settings]);
+  return tot;
+}, [rows, settings]);
 
   function resetDailyInputs() {
     setScheduledHours("");
