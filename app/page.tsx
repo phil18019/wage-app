@@ -64,25 +64,34 @@ function computeWorkedHours(startTime: string, endTime: string) {
 
 function computeLateNightHours(startTime: string, endTime: string) {
   const s0 = toMinutes(startTime);
-  const e00 = toMinutes(endTime);
-  if (!Number.isFinite(s0) || !Number.isFinite(e00)) return { lateHours: 0, nightHours: 0 };
+  const e0 = toMinutes(endTime);
+  if (!Number.isFinite(s0) || !Number.isFinite(e0)) return { lateHours: 0, nightHours: 0 };
 
+  // normalize shift to an interval [s, e] where e may be next day
   let s = s0;
-  let e = e00;
+  let e = e0;
   if (e <= s) e += 24 * 60;
 
-  const overlap = (a: number, b: number) => Math.max(0, Math.min(e, b) - Math.max(s, a));
+  const overlap = (sA: number, eA: number, sB: number, eB: number) =>
+    Math.max(0, Math.min(eA, eB) - Math.max(sA, sB));
 
-  // Late window: 14:00–22:00 (same day) + if shift spills into next day, also check next day's late window
-  const late1 = overlap(14 * 60, 22 * 60);
-  const late2 = overlap(24 * 60 + 14 * 60, 24 * 60 + 22 * 60);
-  const lateMin = late1 + late2;
+  // We check windows across day offsets so BOTH:
+  // - early morning (00:00–06:00)
+  // - late night (22:00–24:00)
+  // are counted correctly regardless of where the shift starts/ends.
+  let lateMin = 0;
+  let nightMin = 0;
 
-  // Night window: 22:00–06:00 (spans midnight)
-  // Represent as: 22:00–24:00 and 24:00–30:00
-  const night1 = overlap(22 * 60, 24 * 60);
-  const night2 = overlap(24 * 60 + 0, 24 * 60 + 6 * 60);
-  const nightMin = night1 + night2;
+  for (const dayOffset of [-1, 0, 1]) {
+    const base = dayOffset * 24 * 60;
+
+    // Late: 14:00–22:00
+    lateMin += overlap(s, e, base + 14 * 60, base + 22 * 60);
+
+    // Night: 22:00–06:00 (two segments)
+    nightMin += overlap(s, e, base + 22 * 60, base + 24 * 60);
+    nightMin += overlap(s, e, base + 24 * 60, base + 30 * 60); // 00:00–06:00 next day
+  }
 
   return {
     lateHours: round2(lateMin / 60),
