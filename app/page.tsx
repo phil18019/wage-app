@@ -212,12 +212,14 @@ const month = useMemo(() => {
   const otThreshold = clampNonNeg(settings.otThreshold);
   const doubleRate = clampNonNeg(settings.doubleRate);
 
-  for (const r of rows) {
+   for (const r of rows) {
     const wh = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
     const { lateHours, nightHours } = computeLateNightHours(r.startTime, r.endTime);
     const sick = clampNonNeg(Number(r.sickHours) || 0);
 
-    let remaining = wh;
+    const sh = clampNonNeg(Number(r.scheduledHours) || 0);
+   // Flags should consume scheduled hours (so PART means “half the shift”)
+  let remaining = sh > 0 ? sh : wh;
 
     const unpaidSplit = splitByFlag(r.unpaidFlag, remaining);
     remaining = unpaidSplit.remaining;
@@ -262,8 +264,14 @@ if (paidHours > 0) {
   tot.bankHol +
   tot.dbl;
 
-tot.std = Math.min(tot.worked, otThreshold);
-  tot.ot = Math.max(0, tot.qualifying - otThreshold);
+// OT is triggered by qualifying hours
+tot.ot = Math.max(0, tot.qualifying - otThreshold);
+
+// But OT can only be PAID on hours actually worked
+const otPaid = Math.min(tot.worked, tot.ot);
+
+// STD is whatever worked hours are left after OT hours
+tot.std = Math.max(0, tot.worked - otPaid);
 
   // PAY
   tot.stdPay = round2(tot.std * base);
