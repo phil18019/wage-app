@@ -243,23 +243,26 @@ const month = useMemo(() => {
     tot.worked += remaining;
 
     // premiums only apply if there are paid/working hours left after flags
-    if (remaining > 0) {
-      tot.late += clampNonNeg(lateHours);
-      tot.night += clampNonNeg(nightHours);
-    }
+   const paidHours =
+  remaining + holSplit.flagged + lieuSplit.flagged + bhSplit.flagged + dblSplit.flagged;
+
+if (paidHours > 0) {
+  tot.late += clampNonNeg(lateHours);
+  tot.night += clampNonNeg(nightHours);
+}
 
     tot.sick += sick;
   }
 
   // QUALIFYING HOURS (if you want hol + lieu to count toward OT, include them here)
   tot.qualifying =
-    tot.worked +
-    tot.hol +
-    tot.lieu +
-    tot.bankHol +
-    tot.dbl;
+  tot.worked +
+  tot.hol +
+  tot.lieu +
+  tot.bankHol +
+  tot.dbl;
 
-  tot.std = Math.min(tot.qualifying, otThreshold);
+tot.std = Math.min(tot.worked, otThreshold);
   tot.ot = Math.max(0, tot.qualifying - otThreshold);
 
   // PAY
