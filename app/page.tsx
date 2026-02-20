@@ -470,12 +470,24 @@ const input =
 
           <div>
             <div className={label}>Start</div>
-            <input className={input} value={startTime} onChange={(e) => setStartTime(e.target.value)} placeholder="HH:MM" />
+            <input
+  type="time"
+  step="60"
+  className={input}
+  value={startTime}
+  onChange={(e) => setStartTime(e.target.value)}
+/>
           </div>
 
           <div>
             <div className={label}>Finish</div>
-            <input className={input} value={endTime} onChange={(e) => setEndTime(e.target.value)} placeholder="HH:MM" />
+            <input
+  type="time"
+  step="60"
+  className={input}
+  value={endTime}
+  onChange={(e) => setEndTime(e.target.value)}
+/>
           </div>
 
           <div>
