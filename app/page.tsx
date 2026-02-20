@@ -217,9 +217,18 @@ export default function Home() {
       tot.unpaidFull += r.unpaidFlag === "Y" ? unpaidSplit.flagged : 0;
       tot.unpaidPart += r.unpaidFlag === "P" ? unpaidSplit.flagged : 0;
 
-      const holSplit = splitByFlag(r.holidayFlag, remaining);
-      remaining = holSplit.remaining;
-      tot.hol += holSplit.flagged;
+      // --- HOL handling ---
+      // For P: holiday hours are the missing hours from the scheduled shift (scheduled - worked)
+      if (r.holidayFlag === "Y") {
+      // Full holiday: treat the whole scheduled shift as holiday, no worked hours
+      tot.hol += clampNonNeg(r.scheduledHours);
+      remaining = 0;
+      } else if (r.holidayFlag === "P") {
+      // Part holiday: holiday is the gap between scheduled and worked
+      const holHrs = Math.max(0, clampNonNeg(r.scheduledHours) - wh);
+      tot.hol += round2(holHrs);
+      remaining = wh; // keep all worked time as worked
+      }
 
       const lieuSplit = splitByFlag(r.lieuFlag, remaining);
       remaining = lieuSplit.remaining;
