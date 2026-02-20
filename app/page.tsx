@@ -116,6 +116,16 @@ function downloadText(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function addHoursToTime(startTime: string, hours: number) {
+  const s = toMinutes(startTime);
+  if (!Number.isFinite(s)) return "";
+  const mins = Math.round(clampNonNeg(hours) * 60);
+  const total = (s + mins) % (24 * 60);
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 export default function Home() {
   // Settings (from lib + localStorage)
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -177,7 +187,25 @@ export default function Home() {
 
   // Computed for "This shift"
   const workedHours = useMemo(() => computeWorkedHours(startTime, endTime), [startTime, endTime]);
-  const prem = useMemo(() => computeLateNightHours(startTime, endTime), [startTime, endTime]);
+ const prem = useMemo(() => {
+  const sh = clampNonNeg(Number(scheduledHours) || 0);
+
+  // Full HOL / Full Unpaid block premiums completely
+  // Block only FULL holiday/unpaid
+if (holidayFlag === "Y" || unpaidFlag === "Y") {
+  return { lateHours: 0, nightHours: 0 };
+}
+
+// Protect premiums for LIEU/BH/Double using scheduled hours
+const premiumsProtected = lieuFlag !== "" || bankHolFlag !== "" || doubleFlag !== "";
+
+const premEnd =
+  premiumsProtected && sh > 0
+    ? addHoursToTime(startTime, sh)
+    : endTime;
+
+return computeLateNightHours(startTime, premEnd);
+}, [startTime, endTime, scheduledHours, holidayFlag, unpaidFlag]);
 
  // Month totals + pay
 const month = useMemo(() => {
@@ -223,7 +251,20 @@ const month = useMemo(() => {
 
    for (const r of rows) {
     const wh = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
-    const { lateHours, nightHours } = computeLateNightHours(r.startTime, r.endTime);
+    const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
+
+let lateHours = 0;
+let nightHours = 0;
+
+if (!premiumsBlocked) {
+  const shRow = clampNonNeg(Number(r.scheduledHours) || 0);
+  const premiumsProtected = r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
+  const premEnd = premiumsProtected && shRow > 0 ? addHoursToTime(r.startTime, shRow) : r.endTime;
+
+  const p = computeLateNightHours(r.startTime, premEnd);
+  lateHours = p.lateHours;
+  nightHours = p.nightHours;
+}
     const sick = clampNonNeg(Number(r.sickHours) || 0);
 
     const sh = clampNonNeg(Number(r.scheduledHours) || 0);
@@ -257,12 +298,7 @@ const month = useMemo(() => {
    // Premiums:
    // Only blocked when the whole shift is Holiday or Unpaid.
    // LIEU/BH/Double still earn premiums.
-  const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
-
- if (!premiumsBlocked && wh > 0) {
-  tot.late += clampNonNeg(lateHours);
-  tot.night += clampNonNeg(nightHours);
- }
+  
 
     tot.sick += sick;
   }
