@@ -23,7 +23,9 @@ export default function HelpPage() {
 
           <ul className="mt-4 list-disc pl-5 space-y-2 text-sm text-gray-700 dark:text-gray-200">
             <li>Use Settings to change pay rates and the overtime threshold.</li>
+            <li>For full shifts sick, input date and scheduled hours only</li>
             <li>Export CSV to save your month totals.</li>
+            <li>To calculate individual weeks, change qualifying for 160 to 40 in the settings tab</li>
             <li>All data stays on your phone (local storage).</li>
           </ul>
         </div>
