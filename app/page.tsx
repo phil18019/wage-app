@@ -245,7 +245,6 @@ export default function Home() {
   const [scheduledHours, setScheduledHours] = useState<string>("");
   const [startTime, setStartTime] = useState<string>("");
   const [endTime, setEndTime] = useState<string>("");
-
   const [holidayFlag, setHolidayFlag] = useState<Flag>("");
   const [unpaidFlag, setUnpaidFlag] = useState<Flag>("");
   const [lieuFlag, setLieuFlag] = useState<Flag>("");
@@ -253,7 +252,7 @@ export default function Home() {
   const [doubleFlag, setDoubleFlag] = useState<Flag>("");
 
   const [sickHours, setSickHours] = useState<string>("");
-
+  const [editingId, setEditingId] = useState<string | null>(null);
   useEffect(() => {
     try {
       const s = getSettings();
@@ -400,14 +399,14 @@ export default function Home() {
 
     tot.totalPay = round2(
       tot.stdPay +
-        tot.otPay +
-        tot.sickPay +
-        tot.lateAddPay +
-        tot.nightAddPay +
-        tot.lieuPay +
-        tot.bankHolPay +
-        tot.doublePay +
-        tot.holPay
+      tot.otPay +
+      tot.sickPay +
+      tot.lateAddPay +
+      tot.nightAddPay +
+      tot.lieuPay +
+      tot.bankHolPay +
+      tot.doublePay +
+      tot.holPay
     );
 
     return tot;
@@ -448,9 +447,60 @@ export default function Home() {
   }
 
   function deleteShift(id: string) {
-  if (!confirm("Delete this saved shift?")) return;
-  setRows((prev) => prev.filter((r) => r.id !== id));
-}
+    if (!confirm("Delete this saved shift?")) return;
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  }
+  function loadShiftForEdit(row: ShiftRow) {
+    setDate(row.date);
+    setScheduledHours(String(row.scheduledHours ?? ""));
+    setStartTime(row.startTime || "");
+    setEndTime(row.endTime || "");
+
+    setHolidayFlag(row.holidayFlag || "");
+    setUnpaidFlag(row.unpaidFlag || "");
+    setLieuFlag(row.lieuFlag || "");
+    setBankHolFlag(row.bankHolFlag || "");
+    setDoubleFlag(row.doubleFlag || "");
+    setSickHours(String(row.sickHours ?? ""));
+
+    setEditingId(row.id);
+  }
+
+
+  function updateShift() {
+    if (!editingId) return;
+
+    const sh = clampNonNeg(Number(scheduledHours) || 0);
+    const sick = clampNonNeg(Number(sickHours) || 0);
+
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === editingId
+          ? {
+            ...r,
+            date,
+            scheduledHours: sh,
+            startTime: startTime || "",
+            endTime: endTime || "",
+            holidayFlag,
+            unpaidFlag,
+            lieuFlag,
+            bankHolFlag,
+            doubleFlag,
+            sickHours: sick,
+          }
+          : r
+      )
+    );
+
+    setEditingId(null);
+    resetDailyInputs();
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    resetDailyInputs();
+  }
 
   function clearMonth() {
     if (!confirm("Clear all saved shifts for this month?")) return;
@@ -527,42 +577,42 @@ export default function Home() {
   const input =
     "mt-1 w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
 
-    const APP_VERSION = "1.0.0";
+  const APP_VERSION = "1.0.0";
 
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto text-[var(--foreground)]">
       <div className="mb-6 flex items-start justify-between gap-4">
-  <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
 
-    <img
-      src="/icon-192.png"
-      alt="Wage Check logo"
-      className="h-30 w-30 sm:h-16 sm:w-16 rounded-2xl shadow-md"
-    />
+          <img
+            src="/icon-192.png"
+            alt="Wage Check logo"
+            className="h-30 w-30 sm:h-16 sm:w-16 rounded-2xl shadow-md"
+          />
 
-    <div>
-      <h1 className="text-2xl font-bold">Wage Check</h1>
-      <p className="text-xs text-gray-600 dark:text-white/60">
-        v{APP_VERSION} . Created by Phil Crompton 
-      </p>
-    </div>
+          <div>
+            <h1 className="text-2xl font-bold">Wage Check</h1>
+            <p className="text-xs text-gray-600 dark:text-white/60">
+              v{APP_VERSION} . Created by Phil Crompton
+            </p>
+          </div>
 
-  </div>
+        </div>
 
-  <div className="flex gap-2">
-    <Link href="/help" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
-      Help
-    </Link>
-    <Link href="/settings" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
-      Settings
-    </Link>
-  </div>
-</div>
+        <div className="flex gap-2">
+          <Link href="/help" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
+            Help
+          </Link>
+          <Link href="/settings" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
+            Settings
+          </Link>
+        </div>
+      </div>
 
       {/* This shift */}
       <div className={`${card} mb-5`}>
         <div className="text-lg font-semibold mb-3">This shift</div>
-
+      
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <div className={label}>Date</div>
@@ -658,110 +708,142 @@ export default function Home() {
           </div>
         </div>
 
-        <button className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold" onClick={saveDayToMonth}>
-          Save day to month
-        </button>
-      </div>
-
-      {/* This month */}
-      <div className={`${card} mb-5`}>
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-          <div className="text-lg font-semibold">This month</div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold" onClick={exportCSV}>
-              Export CSV
+        {editingId ? (
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-3 font-semibold text-white"
+              onClick={updateShift}
+              type="button"
+            >
+              Update shift
             </button>
-            <button className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold" onClick={clearMonth}>
-              Clear Month
+
+            <button
+              className="w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold"
+              onClick={cancelEdit}
+              type="button"
+            >
+              Cancel
             </button>
           </div>
-        </div>
-
-        <div className="text-lg font-semibold mb-2">Hours</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-          <div>Total Worked: <b>{month.worked}</b></div>
-          <div>Qualifying (for {settings.otThreshold}): <b>{month.qualifying}</b></div>
-          <div>STD Hours: <b>{month.std}</b></div>
-          <div>OT Hours: <b>{month.ot}</b></div>
-          <div>Late Prem: <b>{month.late}</b></div>
-          <div>Night Prem: <b>{month.night}</b></div>
-          <div>HOL Hours: <b>{month.hol}</b></div>
-          <div>LIEU Hours: <b>{month.lieu}</b></div>
-          <div>BH Hours: <b>{month.bankHol}</b></div>
-          <div>Double Hours: <b>{month.dbl}</b></div>
-          <div>Unpaid (Full): <b>{month.unpaidFull}</b></div>
-          <div>Unpaid (Part): <b>{month.unpaidPart}</b></div>
-          <div>Sick Hours: <b>{month.sick}</b></div>
-        </div>
-
-        <div className="pt-4 mt-4 border-t border-white/20">
-          <div className="text-lg font-semibold mb-2">Pay (£)</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-            <div>STD pay: <b>{fmtGBP(month.stdPay)}</b></div>
-            <div>OT pay: <b>{fmtGBP(month.otPay)}</b></div>
-            <div>Sick pay: <b>{fmtGBP(month.sickPay)}</b></div>
-            <div>Late add-on: <b>{fmtGBP(month.lateAddPay)}</b></div>
-            <div>Night add-on: <b>{fmtGBP(month.nightAddPay)}</b></div>
-            <div>LIEU pay: <b>{fmtGBP(month.lieuPay)}</b></div>
-            <div>BH pay: <b>{fmtGBP(month.bankHolPay)}</b></div>
-            <div>Double pay: <b>{fmtGBP(month.doublePay)}</b></div>
-            <div>Holiday pay: <b>{fmtGBP(month.holPay)}</b></div>
-          </div>
-
-          <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
-        </div>
-      </div>
-
-      {/* Saved shifts */}
-      <div className={`${card}`}>
-        <div className="text-lg font-semibold mb-3">Saved shifts</div>
-
-        {rows.length === 0 ? (
-          <div className="text-sm text-white/60">No saved shifts yet.</div>
         ) : (
-          <div className="space-y-3">
-            {rows.map((r) => {
-              const wh = computeWorkedHours(r.startTime, r.endTime);
-              return (
-                <div key={r.id} className="rounded-xl bg-black/20 p-3">
-  <div className="flex items-center justify-between gap-3">
-  <div className="font-semibold">{r.date}</div>
-
-  <div className="flex items-center gap-3">
-    <div className="text-sm text-white/70">
-      {r.startTime || "--:--"} → {r.endTime || "--:--"}
-    </div>
-
-    <button
-  type="button"
-  onClick={() => {
-    console.log("DELETE CLICKED", r.id);
-    deleteShift(r.id);
-  }}
->
-  Delete
-</button>
-  </div>
-</div>
-
-  
-
-                  <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-white/80">
-                    <div>Scheduled: <b>{r.scheduledHours ?? 0}</b></div>
-                    <div>Worked: <b>{wh}</b></div>
-                    <div>Holiday (Y/P): <b>{r.holidayFlag || "-"}</b></div>
-                    <div>Unpaid (Y/P): <b>{r.unpaidFlag || "-"}</b></div>
-                    <div>LIEU (Y/P): <b>{r.lieuFlag || "-"}</b></div>
-                    <div>BH (Y/P): <b>{r.bankHolFlag || "-"}</b></div>
-                    <div>Double (Y/P): <b>{r.doubleFlag || "-"}</b></div>
-                    <div>Sick: <b>{r.sickHours ?? 0}</b></div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <button
+            className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold"
+            onClick={saveDayToMonth}
+            type="button"
+          >
+            Save day to month
+          </button>
         )}
-      </div>
+        </div>  {/* ✅ closes the This shift card */}
+
+        {/* This month */}
+        <div className={`${card} mb-5`}>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div className="text-lg font-semibold">This month</div>
+            <div className="flex gap-2">
+              <button className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold" onClick={exportCSV}>
+                Export CSV
+              </button>
+              <button className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold" onClick={clearMonth}>
+                Clear Month
+              </button>
+            </div>
+          </div>
+
+          <div className="text-lg font-semibold mb-2">Hours</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+            <div>Total Worked: <b>{month.worked}</b></div>
+            <div>Qualifying (for {settings.otThreshold}): <b>{month.qualifying}</b></div>
+            <div>STD Hours: <b>{month.std}</b></div>
+            <div>OT Hours: <b>{month.ot}</b></div>
+            <div>Late Prem: <b>{month.late}</b></div>
+            <div>Night Prem: <b>{month.night}</b></div>
+            <div>HOL Hours: <b>{month.hol}</b></div>
+            <div>LIEU Hours: <b>{month.lieu}</b></div>
+            <div>BH Hours: <b>{month.bankHol}</b></div>
+            <div>Double Hours: <b>{month.dbl}</b></div>
+            <div>Unpaid (Full): <b>{month.unpaidFull}</b></div>
+            <div>Unpaid (Part): <b>{month.unpaidPart}</b></div>
+            <div>Sick Hours: <b>{month.sick}</b></div>
+          </div>
+
+          <div className="pt-4 mt-4 border-t border-white/20">
+            <div className="text-lg font-semibold mb-2">Pay (£)</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+              <div>STD pay: <b>{fmtGBP(month.stdPay)}</b></div>
+              <div>OT pay: <b>{fmtGBP(month.otPay)}</b></div>
+              <div>Sick pay: <b>{fmtGBP(month.sickPay)}</b></div>
+              <div>Late add-on: <b>{fmtGBP(month.lateAddPay)}</b></div>
+              <div>Night add-on: <b>{fmtGBP(month.nightAddPay)}</b></div>
+              <div>LIEU pay: <b>{fmtGBP(month.lieuPay)}</b></div>
+              <div>BH pay: <b>{fmtGBP(month.bankHolPay)}</b></div>
+              <div>Double pay: <b>{fmtGBP(month.doublePay)}</b></div>
+              <div>Holiday pay: <b>{fmtGBP(month.holPay)}</b></div>
+            </div>
+
+            <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
+          </div>
+        </div>
+
+        {/* Saved shifts */}
+        <div className={`${card}`}>
+          <div className="text-lg font-semibold mb-3">Saved shifts</div>
+
+          {rows.length === 0 ? (
+            <div className="text-sm text-white/60">No saved shifts yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {rows.map((r) => {
+                const wh = computeWorkedHours(r.startTime, r.endTime);
+                return (
+                  <div key={r.id} className="rounded-xl bg-black/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold">{r.date}</div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm text-white/70">
+                          {r.startTime || "--:--"} → {r.endTime || "--:--"}
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => loadShiftForEdit(r)}
+                            className="text-xs px-2 py-1 rounded bg-blue-500 text-white"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              console.log("DELETE CLICKED", r.id);
+                              deleteShift(r.id);
+                            }}
+                            className="text-xs px-2 py-1 rounded bg-red-500 text-white"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-white/80">
+                      <div>Scheduled: <b>{r.scheduledHours ?? 0}</b></div>
+                      <div>Worked: <b>{wh}</b></div>
+                      <div>Holiday (Y/P): <b>{r.holidayFlag || "-"}</b></div>
+                      <div>Unpaid (Y/P): <b>{r.unpaidFlag || "-"}</b></div>
+                      <div>LIEU (Y/P): <b>{r.lieuFlag || "-"}</b></div>
+                      <div>BH (Y/P): <b>{r.bankHolFlag || "-"}</b></div>
+                      <div>Double (Y/P): <b>{r.doubleFlag || "-"}</b></div>
+                      <div>Sick: <b>{r.sickHours ?? 0}</b></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
     </main>
   );
 }
