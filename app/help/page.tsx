@@ -25,7 +25,7 @@ export default function HelpPage() {
             <li>Use Settings to change pay rates and the overtime threshold.</li>
             <li>For full shifts sick, input date and scheduled hours only</li>
             <li>Export CSV to save your month totals.</li>
-            <li>To calculate individual weeks, change qualifying for 160 to 40 in the settings tab</li>
+            <li>To calculate individual weeks, change qualifying for 160 to contractual weekly hours in the settings tab</li>
             <li>All data stays on your phone (local storage).</li>
           </ul>
         </div>
