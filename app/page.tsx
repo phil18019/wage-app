@@ -522,6 +522,8 @@ export default function Home() {
   const input =
     "mt-1 w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
 
+    const APP_VERSION = "1.0.0";
+
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto text-[var(--foreground)]">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -536,7 +538,7 @@ export default function Home() {
     <div>
       <h1 className="text-2xl font-bold">Wage Check</h1>
       <p className="text-xs text-gray-600 dark:text-white/60">
-        Saved locally on this device only.
+        v{APP_VERSION} . Created by Phil Crompton 
       </p>
     </div>
 
