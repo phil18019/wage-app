@@ -447,6 +447,11 @@ export default function Home() {
     resetDailyInputs();
   }
 
+  function deleteShift(id: string) {
+  if (!confirm("Delete this saved shift?")) return;
+  setRows((prev) => prev.filter((r) => r.id !== id));
+}
+
   function clearMonth() {
     if (!confirm("Clear all saved shifts for this month?")) return;
     setRows([]);
@@ -719,12 +724,27 @@ export default function Home() {
               const wh = computeWorkedHours(r.startTime, r.endTime);
               return (
                 <div key={r.id} className="rounded-xl bg-black/20 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-semibold">{r.date}</div>
-                    <div className="text-sm text-white/70">
-                      {r.startTime || "--:--"} → {r.endTime || "--:--"}
-                    </div>
-                  </div>
+  <div className="flex items-center justify-between gap-3">
+  <div className="font-semibold">{r.date}</div>
+
+  <div className="flex items-center gap-3">
+    <div className="text-sm text-white/70">
+      {r.startTime || "--:--"} → {r.endTime || "--:--"}
+    </div>
+
+    <button
+  type="button"
+  onClick={() => {
+    console.log("DELETE CLICKED", r.id);
+    deleteShift(r.id);
+  }}
+>
+  Delete
+</button>
+  </div>
+</div>
+
+  
 
                   <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-white/80">
                     <div>Scheduled: <b>{r.scheduledHours ?? 0}</b></div>
