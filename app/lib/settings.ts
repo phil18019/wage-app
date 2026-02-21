@@ -34,9 +34,9 @@ export function getSettings(): Settings {
     return {
       baseRate: safeNum(parsed?.baseRate, DEFAULT_SETTINGS.baseRate),
       otThreshold: safeNum(parsed?.otThreshold, DEFAULT_SETTINGS.otThreshold),
-      otAddOn: safeNum(parsed?.otPremiumAdd, DEFAULT_SETTINGS.otAddOn),
-      latePremium: safeNum(parsed?.latePremiumAdd, DEFAULT_SETTINGS.latePremium),
-      nightPremium: safeNum(parsed?.nightPremiumAdd, DEFAULT_SETTINGS.nightPremium),
+      otAddOn: safeNum(parsed?.otAddOn, DEFAULT_SETTINGS.otAddOn),
+      latePremium: safeNum(parsed?.latePremium, DEFAULT_SETTINGS.latePremium),
+      nightPremium: safeNum(parsed?.nightPremium, DEFAULT_SETTINGS.nightPremium),
       doubleRate: safeNum(parsed?.doubleRate, DEFAULT_SETTINGS.doubleRate),
       holidayRate: safeNum(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
     };
