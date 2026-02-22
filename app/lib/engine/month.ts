@@ -151,9 +151,10 @@ export function emptyMonthTotals(): MonthTotals {
  * - Qualifying for OT = worked + hol + lieu + bankHol (double is NOT added; it’s a subset of worked).
  * - OT paid hours can only come from worked hours that are NOT already paid as Double.
  */
-function computeRowBreakdown(r: ShiftRow) {
+ function computeRowBreakdown(r: ShiftRow) {
   const sh = clampNonNeg(Number(r.scheduledHours) || 0);
-  const whRaw = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
+  const whRaw = clampNonNeg(computeWorkedHours(r.startTime ?? "", r.endTime ?? ""));
+
   const baseShift = sh > 0 ? sh : whRaw;
 
   // FULL flags
@@ -168,13 +169,13 @@ function computeRowBreakdown(r: ShiftRow) {
   const partHol = r.holidayFlag === "P";
   const partLieu = r.lieuFlag === "P";
   const partBH = r.bankHolFlag === "P";
-  const partDouble = r.doubleFlag === "P";
+  const partDouble = r.doubleFlag === "P"; 
 
   // Worked physical:
   // - Full HOL/Unpaid/Lieu/BH = not worked
   // - Full Double = still worked (paid double)
   const workedPhysical =
-    (fullUnpaid || fullHol || fullLieu || fullBH) ? 0 : Math.min(whRaw, baseShift);
+    (fullUnpaid || fullHol || fullLieu || fullBH) ? 0 : whRaw
 
   // Remainder for PART flags = scheduled - worked
   let remainder = round2(Math.max(0, baseShift - workedPhysical));
@@ -233,10 +234,32 @@ if (!premiumsBlocked && baseShift > 0 && r.startTime) {
     (r.bankHolFlag ?? "") !== "" ||
     (r.doubleFlag ?? "") !== "";
 
-    const premEnd =
-      premiumsProtected && sh > 0
-        ? addHoursToTime(r.startTime, sh)
-        : (r.endTime || "");
+    const endProvided = (r.endTime ?? "").trim() !== "";
+
+const hasEnd = (r.endTime ?? "").trim() !== "";
+
+const hasLieuOrBH =
+  (r.lieuFlag ?? "").trim() !== "" ||
+  (r.bankHolFlag ?? "").trim() !== "";
+
+const hasDouble = (r.doubleFlag ?? "").trim() !== "";
+
+let premEnd = "";
+
+// Double: prefer actual endTime (so 17:00→05:00 gives night=7)
+if (hasDouble) {
+  premEnd = hasEnd ? (r.endTime as string)
+    : (sh > 0 ? addHoursToTime(r.startTime, sh) : "");
+}
+// LIEU/BH: premiums are “protected” to the scheduled window (ignore endTime)
+else if (hasLieuOrBH) {
+  premEnd = sh > 0 ? addHoursToTime(r.startTime, sh) : (hasEnd ? (r.endTime as string) : "");
+}
+// Normal: use actual endTime if present, else scheduled
+else {
+  premEnd = hasEnd ? (r.endTime as string)
+    : (sh > 0 ? addHoursToTime(r.startTime, sh) : "");
+}
 
     const p = computeLateNightHours(r.startTime, premEnd);
 
