@@ -3,6 +3,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DEFAULT_SETTINGS, getSettings, type Settings } from "./lib/settings";
+import { computeWorkedHours } from "./lib/engine/time";
+import { fmtGBP } from "./lib/engine/money";
+import { computeMonthTotals } from "./lib/engine/month";
+
 
 type Flag = "" | "Y" | "P";
 
@@ -32,10 +36,7 @@ function clampNonNeg(n: number) {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
-function fmtGBP(n: number) {
-  const v = Number.isFinite(n) ? n : 0;
-  return `£${v.toFixed(2)}`;
-}
+
 
 function toMinutes(t: string) {
   // accepts "HH:MM" or "HH:MM:SS"
@@ -48,18 +49,7 @@ function toMinutes(t: string) {
   return hh * 60 + mm;
 }
 
-function computeWorkedHours(startTime: string, endTime: string) {
-  const s = toMinutes(startTime);
-  const e0 = toMinutes(endTime);
-  if (!Number.isFinite(s) || !Number.isFinite(e0)) return 0;
 
-  let e = e0;
-  // overnight support
-  if (e <= s) e += 24 * 60;
-
-  const minutes = Math.max(0, e - s);
-  return round2(minutes / 60);
-}
 
 function computeLateNightHours(startTime: string, endTime: string) {
   const s0 = toMinutes(startTime);
@@ -309,108 +299,7 @@ export default function Home() {
     return computeLateNightHours(startTime, endTime);
   }, [startTime, endTime, scheduledHours, holidayFlag, unpaidFlag, lieuFlag, bankHolFlag, doubleFlag]);
 
-  const month = useMemo(() => {
-    const tot = {
-      worked: 0,       // physical worked
-      qualifying: 0,   // trigger for OT
-      std: 0,
-      ot: 0,           // PAID OT hours (worked only, excluding double)
-      late: 0,
-      night: 0,
-      hol: 0,
-      lieu: 0,
-      bankHol: 0,
-      dbl: 0,
-      unpaidFull: 0,
-      unpaidPart: 0,
-      sick: 0,
-
-      stdPay: 0,
-      otPay: 0,
-      sickPay: 0,
-      lateAddPay: 0,
-      nightAddPay: 0,
-      lieuPay: 0,
-      bankHolPay: 0,
-      doublePay: 0,
-      holPay: 0,
-      totalPay: 0,
-    };
-
-    const base = clampNonNeg(settings.baseRate);
-    const otAdd = clampNonNeg(settings.otAddOn);
-    const lateAdd = clampNonNeg(settings.latePremium);
-    const nightAdd = clampNonNeg(settings.nightPremium);
-    const holRate = clampNonNeg(settings.holidayRate);
-    const otThreshold = clampNonNeg(settings.otThreshold);
-    const doubleRate = clampNonNeg(settings.doubleRate);
-
-    for (const r of rows) {
-      const b = computeRowBreakdown(r);
-
-      tot.worked += b.worked;
-      tot.hol += b.hol;
-      tot.lieu += b.lieu;
-      tot.bankHol += b.bankHol;
-      tot.dbl += b.dbl;
-
-      tot.unpaidFull += b.unpaidFull;
-      tot.unpaidPart += b.unpaidPart;
-      tot.sick += b.sick;
-
-      tot.late += b.late;
-      tot.night += b.night;
-    }
-
-    tot.worked = round2(tot.worked);
-    tot.hol = round2(tot.hol);
-    tot.lieu = round2(tot.lieu);
-    tot.bankHol = round2(tot.bankHol);
-    tot.dbl = round2(tot.dbl);
-    tot.late = round2(tot.late);
-    tot.night = round2(tot.night);
-
-    // Qualifying counts toward OT trigger (NOT unpaid)
-    tot.qualifying = round2(tot.worked + tot.hol + tot.lieu + tot.bankHol);
-
-    // OT triggered by qualifying,
-    // but OT PAID can only come from hours that are physically worked AND not already paid as Double.
-    const otRaw = Math.max(0, tot.qualifying - otThreshold);
-    const workedAvailableForStdOt = Math.max(0, tot.worked - tot.dbl);
-
-    tot.ot = round2(Math.min(workedAvailableForStdOt, otRaw));
-    tot.std = round2(Math.max(0, workedAvailableForStdOt - tot.ot));
-
-    // PAY
-    tot.stdPay = round2(tot.std * base);
-    tot.otPay = round2(tot.ot * (base + otAdd));
-    tot.sickPay = round2(tot.sick * base);
-
-    tot.lateAddPay = round2(tot.late * lateAdd);
-    tot.nightAddPay = round2(tot.night * nightAdd);
-
-    tot.lieuPay = round2(tot.lieu * base);
-    tot.bankHolPay = round2(tot.bankHol * base);
-
-    // Double pay: base * doubleRate (NOT base + base again)
-    tot.doublePay = round2(tot.dbl * base * doubleRate);
-
-    tot.holPay = round2(tot.hol * holRate);
-
-    tot.totalPay = round2(
-      tot.stdPay +
-      tot.otPay +
-      tot.sickPay +
-      tot.lateAddPay +
-      tot.nightAddPay +
-      tot.lieuPay +
-      tot.bankHolPay +
-      tot.doublePay +
-      tot.holPay
-    );
-
-    return tot;
-  }, [rows, settings]);
+  const month = useMemo(() => computeMonthTotals(rows as any, settings), [rows, settings]);
 
   function resetDailyInputs() {
     setScheduledHours("");
