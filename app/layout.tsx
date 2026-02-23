@@ -1,11 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Wage Check",
   description: "Shift & wage calculator",
   manifest: "/manifest.json",
-  themeColor: "#0B2A6F",
 
   icons: {
     icon: [
@@ -24,6 +23,10 @@ export const metadata: Metadata = {
   other: {
     "apple-touch-startup-image": "/apple-splash-1290x2796.png",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0B2A6F",
 };
 
 export default function RootLayout({

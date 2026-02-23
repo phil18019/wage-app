@@ -6,7 +6,15 @@ import { DEFAULT_SETTINGS, getSettings, type Settings } from "./lib/settings";
 import { computeWorkedHours } from "./lib/engine/time";
 import { fmtGBP } from "./lib/engine/money";
 import { computeMonthTotals } from "./lib/engine/month";
-
+import { isProEnabled, tryUnlockPro } from "./lib/pro";
+import {
+  listSavedMonths,
+  upsertSavedMonth,
+  deleteSavedMonth,
+  monthIdFromDate,
+  labelFromMonthId,
+  type SavedMonth,
+} from "./lib/engine/history";
 
 type Flag = "" | "Y" | "P";
 
@@ -36,8 +44,6 @@ function clampNonNeg(n: number) {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
-
-
 function toMinutes(t: string) {
   // accepts "HH:MM" or "HH:MM:SS"
   const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec((t || "").trim());
@@ -49,12 +55,11 @@ function toMinutes(t: string) {
   return hh * 60 + mm;
 }
 
-
-
 function computeLateNightHours(startTime: string, endTime: string) {
   const s0 = toMinutes(startTime);
   const e0 = toMinutes(endTime);
-  if (!Number.isFinite(s0) || !Number.isFinite(e0)) return { lateHours: 0, nightHours: 0 };
+  if (!Number.isFinite(s0) || !Number.isFinite(e0))
+    return { lateHours: 0, nightHours: 0 };
 
   // normalize shift to an interval [s, e] where e may be next day
   let s = s0;
@@ -106,8 +111,15 @@ function addHoursToTime(startTime: string, hours: number) {
 }
 
 // FULL flags that mean "not worked" (Double is NOT one of these)
-function isOffFullFlag(r: Pick<ShiftRow, "holidayFlag" | "unpaidFlag" | "lieuFlag" | "bankHolFlag">) {
-  return r.unpaidFlag === "Y" || r.holidayFlag === "Y" || r.lieuFlag === "Y" || r.bankHolFlag === "Y";
+function isOffFullFlag(
+  r: Pick<ShiftRow, "holidayFlag" | "unpaidFlag" | "lieuFlag" | "bankHolFlag">
+) {
+  return (
+    r.unpaidFlag === "Y" ||
+    r.holidayFlag === "Y" ||
+    r.lieuFlag === "Y" ||
+    r.bankHolFlag === "Y"
+  );
 }
 
 /**
@@ -185,22 +197,20 @@ function computeRowBreakdown(r: ShiftRow) {
 
   // ----- premiums -----
   const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
-  const premiumsProtected = r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
+  const premiumsProtected =
+    r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
 
   if (!premiumsBlocked && r.startTime) {
     let premEnd = r.endTime;
 
     if (premiumsProtected) {
-      // scheduled end if we can compute it
       const schedEnd = sh > 0 ? addHoursToTime(r.startTime, sh) : r.endTime;
 
-      const isDouble = r.doubleFlag !== "";
-
       // Double: if worked exceeds scheduled, use actual end to include extra premiums (e.g. 22–05 = 7h)
+      const isDouble = r.doubleFlag !== "";
       if (isDouble && sh > 0 && workedPhysical > sh && r.endTime) {
         premEnd = r.endTime;
       } else {
-        // LIEU/BH (and Double when not exceeding scheduled): use scheduled end
         premEnd = schedEnd;
       }
 
@@ -220,9 +230,20 @@ function computeRowBreakdown(r: ShiftRow) {
   return out;
 }
 
+function displayFlag(flag: Flag) {
+  if (flag === "Y") return "Full";
+  if (flag === "P") return "Part";
+  return "-";
+}
+
 export default function Home() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [rows, setRows] = useState<ShiftRow[]>([]);
+  const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
+
+  const [pro, setPro] = useState(false);
+  const [proCode, setProCode] = useState("");
+  const [proError, setProError] = useState<string | null>(null);
 
   const [date, setDate] = useState<string>(() => {
     const d = new Date();
@@ -235,6 +256,7 @@ export default function Home() {
   const [scheduledHours, setScheduledHours] = useState<string>("");
   const [startTime, setStartTime] = useState<string>("");
   const [endTime, setEndTime] = useState<string>("");
+
   const [holidayFlag, setHolidayFlag] = useState<Flag>("");
   const [unpaidFlag, setUnpaidFlag] = useState<Flag>("");
   const [lieuFlag, setLieuFlag] = useState<Flag>("");
@@ -243,7 +265,14 @@ export default function Home() {
 
   const [sickHours, setSickHours] = useState<string>("");
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  function refreshSavedMonths() {
+    setSavedMonths(listSavedMonths());
+  }
+
+  // Load saved data (settings, current month rows, pro status, saved months)
   useEffect(() => {
+    // settings
     try {
       const s = getSettings();
       setSettings(s);
@@ -251,16 +280,30 @@ export default function Home() {
       setSettings(DEFAULT_SETTINGS);
     }
 
+    // pro status
+    setPro(isProEnabled());
+
+    // month rows
     try {
       const raw = localStorage.getItem(STORAGE_KEY_MONTH);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setRows(parsed as ShiftRow[]);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setRows(parsed as ShiftRow[]);
+      }
+    } catch {
+      // ignore
+    }
+
+    // saved months
+    try {
+      refreshSavedMonths();
     } catch {
       // ignore
     }
   }, []);
 
+
+  // Persist month rows
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_MONTH, JSON.stringify(rows));
@@ -280,7 +323,8 @@ export default function Home() {
     const wh = clampNonNeg(computeWorkedHours(startTime, endTime));
 
     const premiumsBlocked = holidayFlag === "Y" || unpaidFlag === "Y";
-    const premiumsProtected = lieuFlag !== "" || bankHolFlag !== "" || doubleFlag !== "";
+    const premiumsProtected =
+      lieuFlag !== "" || bankHolFlag !== "" || doubleFlag !== "";
 
     if (premiumsBlocked || !startTime) return { lateHours: 0, nightHours: 0 };
 
@@ -297,9 +341,21 @@ export default function Home() {
     // Not protected: only if physically worked
     if (wh <= 0) return { lateHours: 0, nightHours: 0 };
     return computeLateNightHours(startTime, endTime);
-  }, [startTime, endTime, scheduledHours, holidayFlag, unpaidFlag, lieuFlag, bankHolFlag, doubleFlag]);
+  }, [
+    startTime,
+    endTime,
+    scheduledHours,
+    holidayFlag,
+    unpaidFlag,
+    lieuFlag,
+    bankHolFlag,
+    doubleFlag,
+  ]);
 
-  const month = useMemo(() => computeMonthTotals(rows as any, settings), [rows, settings]);
+  const month = useMemo(
+    () => computeMonthTotals(rows as any, settings),
+    [rows, settings]
+  );
 
   function resetDailyInputs() {
     setScheduledHours("");
@@ -339,6 +395,7 @@ export default function Home() {
     if (!confirm("Delete this saved shift?")) return;
     setRows((prev) => prev.filter((r) => r.id !== id));
   }
+
   function loadShiftForEdit(row: ShiftRow) {
     setDate(row.date);
     setScheduledHours(String(row.scheduledHours ?? ""));
@@ -355,7 +412,6 @@ export default function Home() {
     setEditingId(row.id);
   }
 
-
   function updateShift() {
     if (!editingId) return;
 
@@ -366,18 +422,18 @@ export default function Home() {
       prev.map((r) =>
         r.id === editingId
           ? {
-            ...r,
-            date,
-            scheduledHours: sh,
-            startTime: startTime || "",
-            endTime: endTime || "",
-            holidayFlag,
-            unpaidFlag,
-            lieuFlag,
-            bankHolFlag,
-            doubleFlag,
-            sickHours: sick,
-          }
+              ...r,
+              date,
+              scheduledHours: sh,
+              startTime: startTime || "",
+              endTime: endTime || "",
+              holidayFlag,
+              unpaidFlag,
+              lieuFlag,
+              bankHolFlag,
+              doubleFlag,
+              sickHours: sick,
+            }
           : r
       )
     );
@@ -389,6 +445,57 @@ export default function Home() {
   function cancelEdit() {
     setEditingId(null);
     resetDailyInputs();
+  }
+
+  function saveCurrentMonthSnapshot() {
+    if (!pro) {
+      alert("Pro feature: unlock Pro to save months.");
+      return;
+    }
+
+    if (rows.length === 0) {
+      alert("No shifts saved this month yet.");
+      return;
+    }
+
+    // Month ID uses the currently selected date (YYYY-MM)
+    const id = monthIdFromDate(date);
+    const label = labelFromMonthId(id);
+
+    const entry: SavedMonth = {
+      id,
+      label,
+      createdAt: Date.now(),
+      shiftCount: rows.length,
+      rows,
+      totals: month, // snapshot totals
+    };
+
+    // If already exists, confirm overwrite
+    const exists = savedMonths.some((m) => m.id === id);
+    if (exists) {
+      const ok = confirm(`${label} already exists. Overwrite saved month?`);
+      if (!ok) return;
+    }
+
+    upsertSavedMonth(entry);
+    refreshSavedMonths();
+
+    alert(`Saved: ${label}`);
+  }
+
+  function removeSavedMonth(id: string) {
+    if (!pro) {
+      alert("Pro feature: unlock Pro to manage saved months.");
+      return;
+    }
+
+    const found = savedMonths.find((m) => m.id === id);
+    const label = found?.label ?? id;
+
+    if (!confirm(`Delete saved month "${label}"?`)) return;
+    deleteSavedMonth(id);
+    refreshSavedMonths();
   }
 
   function clearMonth() {
@@ -457,7 +564,13 @@ export default function Home() {
     const csv = [header, ...rowsCsv, summary].join("\n");
     downloadText("wage-app-export.csv", csv);
   }
-
+function requirePro(action: () => void) {
+  if (!pro) {
+    alert("This is a Pro feature 🔒");
+    return;
+  }
+  action();
+}
   const card =
     "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow dark:bg-white/10 dark:border-white/10";
 
@@ -470,13 +583,12 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto text-[var(--foreground)]">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div className="flex items-end gap-3">
           <img
             src="/icon-192.png"
             alt="Wage Check logo"
-            className="h-30 w-30 sm:h-16 sm:w-16 rounded-2xl shadow-md"
+            className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl shadow-md"
           />
 
           <div>
@@ -484,15 +596,81 @@ export default function Home() {
             <p className="text-xs text-gray-600 dark:text-white/60">
               v{APP_VERSION} . Created by Phil Crompton
             </p>
-          </div>
 
+            {!pro && (
+              <div className="mt-2 rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
+                Free version — Pro features locked
+              </div>
+            )}
+
+            {pro && (
+              <div className="mt-2 rounded-xl bg-green-100 text-green-900 px-3 py-2 text-sm">
+                Pro version unlocked
+              </div>
+            )}
+
+            {/* PRO unlock */}
+            <div className="mt-3 rounded-xl bg-white/10 p-3 text-sm">
+              {pro ? (
+                <div className="text-green-300 font-semibold">
+                  Pro features unlocked ✅
+                </div>
+              ) : (
+                <>
+                  <div className="font-semibold mb-2">Unlock Pro</div>
+
+                  <div className="flex gap-2">
+                    <input
+                      value={proCode}
+                      onChange={(e) => {
+                        setProCode(e.target.value);
+                        setProError(null);
+                      }}
+                      placeholder="Enter Pro code"
+                      className="flex-1 rounded-lg bg-black/30 px-3 py-2 text-white placeholder:text-white/40"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const res = tryUnlockPro(proCode);
+
+                        if (res.ok) {
+                          setPro(true);
+                          setProError(null);
+                          setProCode("");
+                          refreshSavedMonths(); // safe: updates UI immediately
+                        } else {
+                          setPro(false);
+                          setProError(res.error);
+                        }
+                      }}
+                      className="rounded-lg bg-blue-500 px-3 py-2 font-semibold text-white"
+                    >
+                      Unlock
+                    </button>
+                  </div>
+
+                  {proError && (
+                    <div className="mt-2 text-red-300">{proError}</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex gap-2">
-          <Link href="/help" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
+          <Link
+            href="/help"
+            className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
+          >
             Help
           </Link>
-          <Link href="/settings" className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15">
+          <Link
+            href="/settings"
+            className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
+          >
             Settings
           </Link>
         </div>
@@ -501,11 +679,16 @@ export default function Home() {
       {/* This shift */}
       <div className={`${card} mb-5`}>
         <div className="text-lg font-semibold mb-3">This shift</div>
-      
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <div className={label}>Date</div>
-            <input type="date" className={input} value={date} onChange={(e) => setDate(e.target.value)} />
+            <input
+              type="date"
+              className={input}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
 
           <div>
@@ -521,73 +704,117 @@ export default function Home() {
 
           <div>
             <div className={label}>Start</div>
-            <input type="time" step="60" className={input} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            <input
+              type="time"
+              step="60"
+              className={input}
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
           </div>
 
           <div>
             <div className={label}>Finish</div>
-            <input type="time" step="60" className={input} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            <input
+              type="time"
+              step="60"
+              className={input}
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+            />
           </div>
 
           <div>
-            <div className={label}>Holiday (Y/P)</div>
-            <select className={input} value={holidayFlag} onChange={(e) => setHolidayFlag(e.target.value as Flag)}>
+            <div className={label}>Holiday</div>
+            <select
+              className={input}
+              value={holidayFlag}
+              onChange={(e) => setHolidayFlag(e.target.value as Flag)}
+            >
               <option value="">-</option>
-              <option value="Y">Y</option>
-              <option value="P">P</option>
+              <option value="Y">Full</option>
+              <option value="P">Part</option>
             </select>
           </div>
 
           <div>
-            <div className={label}>Unpaid (Y/P)</div>
-            <select className={input} value={unpaidFlag} onChange={(e) => setUnpaidFlag(e.target.value as Flag)}>
+            <div className={label}>Unpaid</div>
+            <select
+              className={input}
+              value={unpaidFlag}
+              onChange={(e) => setUnpaidFlag(e.target.value as Flag)}
+            >
               <option value="">-</option>
-              <option value="Y">Y</option>
-              <option value="P">P</option>
+              <option value="Y">Full</option>
+              <option value="P">Part</option>
             </select>
           </div>
 
           <div>
-            <div className={label}>LIEU (Y/P)</div>
-            <select className={input} value={lieuFlag} onChange={(e) => setLieuFlag(e.target.value as Flag)}>
+            <div className={label}>LIEU</div>
+            <select
+              className={input}
+              value={lieuFlag}
+              onChange={(e) => setLieuFlag(e.target.value as Flag)}
+            >
               <option value="">-</option>
-              <option value="Y">Y</option>
-              <option value="P">P</option>
+              <option value="Y">Full</option>
+              <option value="P">Part</option>
             </select>
           </div>
 
           <div>
-            <div className={label}>BH (Y/P)</div>
-            <select className={input} value={bankHolFlag} onChange={(e) => setBankHolFlag(e.target.value as Flag)}>
+            <div className={label}>BH</div>
+            <select
+              className={input}
+              value={bankHolFlag}
+              onChange={(e) => setBankHolFlag(e.target.value as Flag)}
+            >
               <option value="">-</option>
-              <option value="Y">Y</option>
-              <option value="P">P</option>
+              <option value="Y">Full</option>
+              <option value="P">Part</option>
             </select>
           </div>
 
           <div>
-            <div className={label}>Double (Y/P)</div>
-            <select className={input} value={doubleFlag} onChange={(e) => setDoubleFlag(e.target.value as Flag)}>
+            <div className={label}>Double</div>
+            <select
+              className={input}
+              value={doubleFlag}
+              onChange={(e) => setDoubleFlag(e.target.value as Flag)}
+            >
               <option value="">-</option>
-              <option value="Y">Y</option>
-              <option value="P">P</option>
+              <option value="Y">Full</option>
+              <option value="P">Part</option>
             </select>
           </div>
 
           <div>
             <div className={label}>Sick hours</div>
-            <input className={input} value={sickHours} onChange={(e) => setSickHours(e.target.value)} placeholder="0" inputMode="decimal" />
+            <input
+              className={input}
+              value={sickHours}
+              onChange={(e) => setSickHours(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+            />
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
-            <div className="text-sm text-gray-700 dark:text-white/70">Worked hours</div>
-            <div className="text-xl font-bold text-gray-900 dark:text-white">{workedHours}</div>
+            <div className="text-sm text-gray-700 dark:text-white/70">
+              Worked hours
+            </div>
+            <div className="text-xl font-bold text-gray-900 dark:text-white">
+              {workedHours}
+            </div>
           </div>
 
           <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
-            <div className="text-sm text-gray-700 dark:text-white/70">Premiums today (Late / Night)</div>
+            <div className="text-sm text-gray-700 dark:text-white/70">
+              Premiums today (Late / Night)
+            </div>
             <div className="text-xl font-bold text-gray-900 dark:text-white">
               {prem.lateHours} / {prem.nightHours}
             </div>
@@ -624,115 +851,269 @@ export default function Home() {
             Save day to month
           </button>
         )}
-        </div>  {/* ✅ closes the This shift card */}
+      </div>
 
-        {/* This month */}
-        <div className={`${card} mb-5`}>
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <div className="text-lg font-semibold">This month</div>
-            <div className="flex gap-2">
-              <button className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold" onClick={exportCSV}>
-                Export CSV
-              </button>
-              <button className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold" onClick={clearMonth}>
-                Clear Month
-              </button>
-            </div>
-          </div>
+      {/* This month */}
+      <div className={`${card} mb-5`}>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div className="text-lg font-semibold">This month</div>
+          <div className="flex gap-2">
+            <button
+              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold"
+              onClick={exportCSV}
+            >
+              Export CSV
+            </button>
 
-          <div className="text-lg font-semibold mb-2">Hours</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-            <div>Total Worked: <b>{month.worked}</b></div>
-            <div>Qualifying (for {settings.otThreshold}): <b>{month.qualifying}</b></div>
-            <div>STD Hours: <b>{month.std}</b></div>
-            <div>OT Hours: <b>{month.ot}</b></div>
-            <div>Late Prem: <b>{month.late}</b></div>
-            <div>Night Prem: <b>{month.night}</b></div>
-            <div>HOL Hours: <b>{month.hol}</b></div>
-            <div>LIEU Hours: <b>{month.lieu}</b></div>
-            <div>BH Hours: <b>{month.bankHol}</b></div>
-            <div>Double Hours: <b>{month.dbl}</b></div>
-            <div>Unpaid (Full): <b>{month.unpaidFull}</b></div>
-            <div>Unpaid (Part): <b>{month.unpaidPart}</b></div>
-            <div>Sick Hours: <b>{month.sick}</b></div>
-          </div>
+            <button
+              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold"
+              onClick={() => requirePro(saveCurrentMonthSnapshot)}
+              type="button"
+              title={!pro ? "Unlock Pro to save months" : "Save this month"}
+            >
+              Save Month
+            </button>
 
-          <div className="pt-4 mt-4 border-t border-white/20">
-            <div className="text-lg font-semibold mb-2">Pay (£)</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-              <div>STD pay: <b>{fmtGBP(month.stdPay)}</b></div>
-              <div>OT pay: <b>{fmtGBP(month.otPay)}</b></div>
-              <div>Sick pay: <b>{fmtGBP(month.sickPay)}</b></div>
-              <div>Late add-on: <b>{fmtGBP(month.lateAddPay)}</b></div>
-              <div>Night add-on: <b>{fmtGBP(month.nightAddPay)}</b></div>
-              <div>LIEU pay: <b>{fmtGBP(month.lieuPay)}</b></div>
-              <div>BH pay: <b>{fmtGBP(month.bankHolPay)}</b></div>
-              <div>Double pay: <b>{fmtGBP(month.doublePay)}</b></div>
-              <div>Holiday pay: <b>{fmtGBP(month.holPay)}</b></div>
-            </div>
-
-            <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
+            <button
+              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+              onClick={clearMonth}
+            >
+              Clear Month
+            </button>
           </div>
         </div>
 
-        {/* Saved shifts */}
-        <div className={`${card}`}>
-          <div className="text-lg font-semibold mb-3">Saved shifts</div>
+        <div className="text-lg font-semibold mb-2">Hours</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+          <div>
+            Total Worked: <b>{month.worked}</b>
+          </div>
+          <div>
+            Qualifying (for {settings.otThreshold}): <b>{month.qualifying}</b>
+          </div>
+          <div>
+            STD Hours: <b>{month.std}</b>
+          </div>
+          <div>
+            OT Hours: <b>{month.ot}</b>
+          </div>
+          <div>
+            Late Prem: <b>{month.late}</b>
+          </div>
+          <div>
+            Night Prem: <b>{month.night}</b>
+          </div>
+          <div>
+            HOL Hours: <b>{month.hol}</b>
+          </div>
+          <div>
+            LIEU Hours: <b>{month.lieu}</b>
+          </div>
+          <div>
+            BH Hours: <b>{month.bankHol}</b>
+          </div>
+          <div>
+            Double Hours: <b>{month.dbl}</b>
+          </div>
+          <div>
+            Unpaid (Full): <b>{month.unpaidFull}</b>
+          </div>
+          <div>
+            Unpaid (Part): <b>{month.unpaidPart}</b>
+          </div>
+          <div>
+            Sick Hours: <b>{month.sick}</b>
+          </div>
+        </div>
 
-          {rows.length === 0 ? (
-            <div className="text-sm text-white/60">No saved shifts yet.</div>
-          ) : (
-            <div className="space-y-3">
-              {rows.map((r) => {
-                const wh = computeWorkedHours(r.startTime, r.endTime);
-                return (
-                  <div key={r.id} className="rounded-xl bg-black/20 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold">{r.date}</div>
+        <div className="pt-4 mt-4 border-t border-white/20">
+          <div className="text-lg font-semibold mb-2">Pay (£)</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+            <div>
+              STD pay: <b>{fmtGBP(month.stdPay)}</b>
+            </div>
+            <div>
+              OT pay: <b>{fmtGBP(month.otPay)}</b>
+            </div>
+            <div>
+              Sick pay: <b>{fmtGBP(month.sickPay)}</b>
+            </div>
+            <div>
+              Late add-on: <b>{fmtGBP(month.lateAddPay)}</b>
+            </div>
+            <div>
+              Night add-on: <b>{fmtGBP(month.nightAddPay)}</b>
+            </div>
+            <div>
+              LIEU pay: <b>{fmtGBP(month.lieuPay)}</b>
+            </div>
+            <div>
+              BH pay: <b>{fmtGBP(month.bankHolPay)}</b>
+            </div>
+            <div>
+              Double pay: <b>{fmtGBP(month.doublePay)}</b>
+            </div>
+            <div>
+              Holiday pay: <b>{fmtGBP(month.holPay)}</b>
+            </div>
+          </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="text-sm text-white/70">
-                          {r.startTime || "--:--"} → {r.endTime || "--:--"}
-                        </div>
+          <div className="mt-3 text-base font-semibold">
+            Total: {fmtGBP(month.totalPay)}
+          </div>
+        </div>
+      </div>
 
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => loadShiftForEdit(r)}
-                            className="text-xs px-2 py-1 rounded bg-blue-500 text-white"
-                          >
-                            Edit
-                          </button>
+      {/* Saved months */}
+      <div className={`${card} mt-5`}>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div className="text-lg font-semibold">Saved months</div>
+          <button
+            type="button"
+            onClick={refreshSavedMonths}
+            className="text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
+            title="Refresh saved months list"
+          >
+            Refresh
+          </button>
+        </div>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              console.log("DELETE CLICKED", r.id);
-                              deleteShift(r.id);
-                            }}
-                            className="text-xs px-2 py-1 rounded bg-red-500 text-white"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-white/80">
-                      <div>Scheduled: <b>{r.scheduledHours ?? 0}</b></div>
-                      <div>Worked: <b>{wh}</b></div>
-                      <div>Holiday (Y/P): <b>{r.holidayFlag || "-"}</b></div>
-                      <div>Unpaid (Y/P): <b>{r.unpaidFlag || "-"}</b></div>
-                      <div>LIEU (Y/P): <b>{r.lieuFlag || "-"}</b></div>
-                      <div>BH (Y/P): <b>{r.bankHolFlag || "-"}</b></div>
-                      <div>Double (Y/P): <b>{r.doubleFlag || "-"}</b></div>
-                      <div>Sick: <b>{r.sickHours ?? 0}</b></div>
+        {!pro ? (
+          <div className="rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
+            Pro feature — unlock Pro to save and view historical months.
+          </div>
+        ) : savedMonths.length === 0 ? (
+          <div className="text-sm text-gray-600 dark:text-white/60">
+            No saved months yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {savedMonths.map((m) => (
+              <div key={m.id} className="rounded-xl bg-black/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{m.label}</div>
+                    <div className="text-xs text-white/60">
+                      Shifts: {m.shiftCount} • Saved:{" "}
+                      {new Date(m.createdAt).toLocaleString()}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+
+                  <button
+                    type="button"
+                    onClick={() => removeSavedMonth(m.id)}
+                    className="text-xs px-2 py-1 rounded bg-red-500 text-white"
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-white/80">
+                  <div>
+                    Worked: <b>{m.totals?.worked ?? 0}</b>
+                  </div>
+                  <div>
+                    Qualifying: <b>{m.totals?.qualifying ?? 0}</b>
+                  </div>
+                  <div>
+                    STD: <b>{m.totals?.std ?? 0}</b>
+                  </div>
+                  <div>
+                    OT: <b>{m.totals?.ot ?? 0}</b>
+                  </div>
+                  <div>
+                    Late: <b>{m.totals?.late ?? 0}</b>
+                  </div>
+                  <div>
+                    Night: <b>{m.totals?.night ?? 0}</b>
+                  </div>
+                  <div>
+                    Total pay: <b>{fmtGBP(m.totals?.totalPay ?? 0)}</b>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Saved shifts */}
+      <div className={`${card}`}>
+        <div className="text-lg font-semibold mb-3">Saved shifts</div>
+
+        {rows.length === 0 ? (
+          <div className="text-sm text-gray-600 dark:text-white/60">
+            No saved shifts yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {rows.map((r) => {
+              const wh = computeWorkedHours(r.startTime, r.endTime);
+              return (
+                <div key={r.id} className="rounded-xl bg-black/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-semibold">{r.date}</div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm text-white/70">
+                        {r.startTime || "--:--"} → {r.endTime || "--:--"}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadShiftForEdit(r)}
+                          className="text-xs px-2 py-1 rounded bg-blue-500 text-white"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            console.log("DELETE CLICKED", r.id);
+                            deleteShift(r.id);
+                          }}
+                          className="text-xs px-2 py-1 rounded bg-red-500 text-white"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-white/80">
+                    <div>
+                      Scheduled: <b>{r.scheduledHours ?? 0}</b>
+                    </div>
+                    <div>
+                      Worked: <b>{wh}</b>
+                    </div>
+                    <div>
+                      Holiday: <b>{displayFlag(r.holidayFlag)}</b>
+                    </div>
+                    <div>
+                      Unpaid: <b>{displayFlag(r.unpaidFlag)}</b>
+                    </div>
+                    <div>
+                      LIEU: <b>{displayFlag(r.lieuFlag)}</b>
+                    </div>
+                    <div>
+                      BH: <b>{displayFlag(r.bankHolFlag)}</b>
+                    </div>
+                    <div>
+                      Double: <b>{displayFlag(r.doubleFlag)}</b>
+                    </div>
+                    <div>
+                      Sick: <b>{r.sickHours ?? 0}</b>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </main>
   );
 }
