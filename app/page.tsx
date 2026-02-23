@@ -589,12 +589,15 @@ export default function Home() {
             alt="Wage Check logo"
             className="h-30 w-30 sm:h-16 sm:w-16 rounded-2xl shadow-md"
           />
-
+         
           <div>
             <h1 className="text-2xl font-bold">Wage Check</h1>
             <p className="text-xs text-gray-600 dark:text-white/60">
               v{APP_VERSION} . Created by Phil Crompton
             </p>
+            <div className="mt-2 rounded-xl bg-blue-100 text-blue-900 px-3 py-2 text-xs font-semibold">
+  Test site – under development
+</div>
           </div>
 
         </div>
