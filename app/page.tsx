@@ -241,6 +241,9 @@ export default function Home() {
   const [rows, setRows] = useState<ShiftRow[]>([]);
   const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
 
+  // ✅ NEW: saved-month selection for dropdown UI
+  const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
+
   const [pro, setPro] = useState(false);
   const [proCode, setProCode] = useState("");
   const [proError, setProError] = useState<string | null>(null);
@@ -302,6 +305,29 @@ export default function Home() {
     }
   }, []);
 
+  // ✅ NEW: keep dropdown selection valid after refresh/delete/unlock
+  useEffect(() => {
+    if (!pro) {
+      setSelectedSavedMonthId("");
+      return;
+    }
+
+    if (savedMonths.length === 0) {
+      setSelectedSavedMonthId("");
+      return;
+    }
+
+    // If current selection no longer exists, select first item
+    const exists = savedMonths.some((m) => m.id === selectedSavedMonthId);
+    if (!selectedSavedMonthId || !exists) {
+      setSelectedSavedMonthId(savedMonths[0].id);
+    }
+  }, [pro, savedMonths, selectedSavedMonthId]);
+
+  const selectedSavedMonth = useMemo(() => {
+    if (!selectedSavedMonthId) return null;
+    return savedMonths.find((m) => m.id === selectedSavedMonthId) ?? null;
+  }, [savedMonths, selectedSavedMonthId]);
 
   // Persist month rows
   useEffect(() => {
@@ -564,13 +590,15 @@ export default function Home() {
     const csv = [header, ...rowsCsv, summary].join("\n");
     downloadText("wage-app-export.csv", csv);
   }
-function requirePro(action: () => void) {
-  if (!pro) {
-    alert("This is a Pro feature 🔒");
-    return;
+
+  function requirePro(action: () => void) {
+    if (!pro) {
+      alert("This is a Pro feature 🔒");
+      return;
+    }
+    action();
   }
-  action();
-}
+
   const card =
     "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow dark:bg-white/10 dark:border-white/10";
 
@@ -639,7 +667,7 @@ function requirePro(action: () => void) {
                           setPro(true);
                           setProError(null);
                           setProCode("");
-                          refreshSavedMonths(); // safe: updates UI immediately
+                          refreshSavedMonths(); // updates UI immediately
                         } else {
                           setPro(false);
                           setProError(res.error);
@@ -964,7 +992,7 @@ function requirePro(action: () => void) {
         </div>
       </div>
 
-      {/* Saved months */}
+      {/* ✅ Saved months (DROPDOWN) */}
       <div className={`${card} mt-5`}>
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
           <div className="text-lg font-semibold">Saved months</div>
@@ -987,53 +1015,75 @@ function requirePro(action: () => void) {
             No saved months yet.
           </div>
         ) : (
-          <div className="space-y-3">
-            {savedMonths.map((m) => (
-              <div key={m.id} className="rounded-xl bg-black/20 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-semibold">{m.label}</div>
-                    <div className="text-xs text-white/60">
-                      Shifts: {m.shiftCount} • Saved:{" "}
-                      {new Date(m.createdAt).toLocaleString()}
-                    </div>
-                  </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className={label}>Select saved month</div>
+                <select
+                  className={input}
+                  value={selectedSavedMonthId}
+                  onChange={(e) => setSelectedSavedMonthId(e.target.value)}
+                >
+                  {savedMonths.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
 
-                  <button
-                    type="button"
-                    onClick={() => removeSavedMonth(m.id)}
-                    className="text-xs px-2 py-1 rounded bg-red-500 text-white"
-                  >
-                    Delete
-                  </button>
+                <div className="text-xs text-gray-600 dark:text-white/60 mt-1">
+                  {selectedSavedMonth
+                    ? `Shifts: ${selectedSavedMonth.shiftCount} • Saved: ${new Date(
+                        selectedSavedMonth.createdAt
+                      ).toLocaleString()}`
+                    : ""}
                 </div>
+              </div>
 
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-white/80">
+              <div className="flex items-end justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedSavedMonth) return;
+                    removeSavedMonth(selectedSavedMonth.id);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+                >
+                  Delete selected
+                </button>
+              </div>
+            </div>
+
+            {selectedSavedMonth && (
+              <div className="mt-4 rounded-xl bg-black/20 p-3">
+                <div className="font-semibold mb-2">{selectedSavedMonth.label}</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-white/80">
                   <div>
-                    Worked: <b>{m.totals?.worked ?? 0}</b>
+                    Worked: <b>{selectedSavedMonth.totals?.worked ?? 0}</b>
                   </div>
                   <div>
-                    Qualifying: <b>{m.totals?.qualifying ?? 0}</b>
+                    Qualifying: <b>{selectedSavedMonth.totals?.qualifying ?? 0}</b>
                   </div>
                   <div>
-                    STD: <b>{m.totals?.std ?? 0}</b>
+                    STD: <b>{selectedSavedMonth.totals?.std ?? 0}</b>
                   </div>
                   <div>
-                    OT: <b>{m.totals?.ot ?? 0}</b>
+                    OT: <b>{selectedSavedMonth.totals?.ot ?? 0}</b>
                   </div>
                   <div>
-                    Late: <b>{m.totals?.late ?? 0}</b>
+                    Late: <b>{selectedSavedMonth.totals?.late ?? 0}</b>
                   </div>
                   <div>
-                    Night: <b>{m.totals?.night ?? 0}</b>
+                    Night: <b>{selectedSavedMonth.totals?.night ?? 0}</b>
                   </div>
                   <div>
-                    Total pay: <b>{fmtGBP(m.totals?.totalPay ?? 0)}</b>
+                    Total pay: <b>{fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}</b>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 
