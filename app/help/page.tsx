@@ -9,7 +9,7 @@ export default function HelpPage() {
     <main className="min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 p-4 sm:p-6">
       <div className="mx-auto max-w-3xl flex flex-col">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/app")}
           className="mb-4 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
         >
           ← Back
@@ -25,7 +25,7 @@ export default function HelpPage() {
             <li>Use Settings to change pay rates and the overtime threshold.</li>
             <li>For full shifts sick, input date and scheduled hours only</li>
             <li>Export CSV to save your month totals.</li>
-            <li>To calculate individual weeks, change qualifying for 160 to contractual weekly hours in the settings tab</li>
+            <li>Change overtime qualifying hours in the settings tab to match company rules</li>
             <li>All data stays on your phone (local storage).</li>
           </ul>
         </div>
