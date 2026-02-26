@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS, getSettings, type Settings } from "./lib/settings";
 import { computeWorkedHours } from "./lib/engine/time";
 import { fmtGBP } from "./lib/engine/money";
 import { computeMonthTotals } from "./lib/engine/month";
+import { computeWeeklyTotals } from "./lib/engine/week";
 import { isProEnabled, tryUnlockPro } from "./lib/pro";
 import {
   listSavedMonths,
@@ -21,20 +22,22 @@ type Flag = "" | "Y" | "P";
 type ShiftRow = {
   id: string;
   date: string; // YYYY-MM-DD
-  scheduledHours: number; // numeric value saved
+  scheduledHours: number;
   startTime: string; // "HH:MM"
   endTime: string; // "HH:MM"
-
   holidayFlag: Flag;
   unpaidFlag: Flag;
   lieuFlag: Flag;
   bankHolFlag: Flag;
   doubleFlag: Flag;
-
   sickHours: number;
 };
 
-const STORAGE_KEY_MONTH = "wagecheck.month.v1"; // keeps your existing month storage
+const STORAGE_KEY_MONTH = "wagecheck.month.v1";
+const STORAGE_KEY_ALLTIME = "wagecheck.alltime.v1";
+const APP_VERSION = "1.0.0";
+
+/* ------------------------- small utilities ------------------------- */
 
 function round2(n: number) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -45,7 +48,6 @@ function clampNonNeg(n: number) {
 }
 
 function toMinutes(t: string) {
-  // accepts "HH:MM" or "HH:MM:SS"
   const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec((t || "").trim());
   if (!m) return NaN;
   const hh = Number(m[1]);
@@ -53,41 +55,6 @@ function toMinutes(t: string) {
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
   if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return NaN;
   return hh * 60 + mm;
-}
-
-function computeLateNightHours(startTime: string, endTime: string) {
-  const s0 = toMinutes(startTime);
-  const e0 = toMinutes(endTime);
-  if (!Number.isFinite(s0) || !Number.isFinite(e0))
-    return { lateHours: 0, nightHours: 0 };
-
-  // normalize shift to an interval [s, e] where e may be next day
-  let s = s0;
-  let e = e0;
-  if (e <= s) e += 24 * 60;
-
-  const overlap = (sA: number, eA: number, sB: number, eB: number) =>
-    Math.max(0, Math.min(eA, eB) - Math.max(sA, sB));
-
-  let lateMin = 0;
-  let nightMin = 0;
-
-  // check windows across day offsets so 22:00–06:00 works for any start/end
-  for (const dayOffset of [-1, 0, 1]) {
-    const base = dayOffset * 24 * 60;
-
-    // Late: 14:00–22:00
-    lateMin += overlap(s, e, base + 14 * 60, base + 22 * 60);
-
-    // Night: 22:00–06:00 (two segments)
-    nightMin += overlap(s, e, base + 22 * 60, base + 24 * 60);
-    nightMin += overlap(s, e, base + 24 * 60, base + 30 * 60);
-  }
-
-  return {
-    lateHours: round2(lateMin / 60),
-    nightHours: round2(nightMin / 60),
-  };
 }
 
 function downloadText(filename: string, content: string) {
@@ -100,6 +67,48 @@ function downloadText(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function csvEscape(v: unknown) {
+  const s = String(v ?? "");
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/* ------------------------- premiums helpers ------------------------- */
+
+function computeLateNightHours(startTime: string, endTime: string) {
+  const s0 = toMinutes(startTime);
+  const e0 = toMinutes(endTime);
+  if (!Number.isFinite(s0) || !Number.isFinite(e0)) {
+    return { lateHours: 0, nightHours: 0 };
+  }
+
+  let s = s0;
+  let e = e0;
+  if (e <= s) e += 24 * 60;
+
+  const overlap = (sA: number, eA: number, sB: number, eB: number) =>
+    Math.max(0, Math.min(eA, eB) - Math.max(sA, sB));
+
+  let lateMin = 0;
+  let nightMin = 0;
+
+  for (const dayOffset of [-1, 0, 1]) {
+    const base = dayOffset * 24 * 60;
+
+    // Late: 14:00–22:00
+    lateMin += overlap(s, e, base + 14 * 60, base + 22 * 60);
+
+    // Night: 22:00–06:00
+    nightMin += overlap(s, e, base + 22 * 60, base + 24 * 60);
+    nightMin += overlap(s, e, base + 24 * 60, base + 30 * 60);
+  }
+
+  return {
+    lateHours: round2(lateMin / 60),
+    nightHours: round2(nightMin / 60),
+  };
+}
+
 function addHoursToTime(startTime: string, hours: number) {
   const s = toMinutes(startTime);
   if (!Number.isFinite(s)) return "";
@@ -109,6 +118,117 @@ function addHoursToTime(startTime: string, hours: number) {
   const mm = String(total % 60).padStart(2, "0");
   return `${hh}:${mm}`;
 }
+
+/* -------------------- ALL-TIME SHIFT LOG (background) -------------------- */
+
+type AllTimeShiftRow = ShiftRow & {
+  createdAt?: number;
+  updatedAt?: number;
+};
+
+function listAllTimeShifts(): AllTimeShiftRow[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ALLTIME);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as AllTimeShiftRow[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAllTimeShifts(all: AllTimeShiftRow[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY_ALLTIME, JSON.stringify(all));
+  } catch {
+    // ignore
+  }
+}
+
+function upsertAllTimeShift(row: ShiftRow) {
+  const all = listAllTimeShifts();
+  const idx = all.findIndex((r) => r.id === row.id);
+  const now = Date.now();
+
+  if (idx >= 0) {
+    const prev = all[idx];
+    all[idx] = { ...prev, ...row, updatedAt: now };
+  } else {
+    all.unshift({ ...row, createdAt: now, updatedAt: now });
+  }
+
+  saveAllTimeShifts(all);
+}
+
+function deleteAllTimeShift(id: string) {
+  const all = listAllTimeShifts().filter((r) => r.id !== id);
+  saveAllTimeShifts(all);
+}
+
+function exportAllTimeCSV() {
+  const all = listAllTimeShifts()
+    .slice()
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      const sa = toMinutes(a.startTime || "");
+      const sb = toMinutes(b.startTime || "");
+      if (!Number.isFinite(sa) && !Number.isFinite(sb)) return 0;
+      if (!Number.isFinite(sa)) return 1;
+      if (!Number.isFinite(sb)) return -1;
+      return sa - sb;
+    });
+
+  const header = [
+    "id",
+    "date",
+    "startTime",
+    "endTime",
+    "scheduledHours",
+    "workedHours",
+    "lateHours",
+    "nightHours",
+    "holidayFlag",
+    "unpaidFlag",
+    "lieuFlag",
+    "bankHolFlag",
+    "doubleFlag",
+    "sickHours",
+    "createdAt",
+    "updatedAt",
+  ].join(",");
+
+  const rowsCsv = all.map((r) => {
+    const worked = clampNonNeg(
+      computeWorkedHours(r.startTime || "", r.endTime || "")
+    );
+    const b = computeRowBreakdown(r);
+
+    const cells = [
+      csvEscape(r.id),
+      csvEscape(r.date),
+      csvEscape(r.startTime || ""),
+      csvEscape(r.endTime || ""),
+      csvEscape(r.scheduledHours ?? 0),
+      csvEscape(worked),
+      csvEscape(b.late),
+      csvEscape(b.night),
+      csvEscape(r.holidayFlag || ""),
+      csvEscape(r.unpaidFlag || ""),
+      csvEscape(r.lieuFlag || ""),
+      csvEscape(r.bankHolFlag || ""),
+      csvEscape(r.doubleFlag || ""),
+      csvEscape(r.sickHours ?? 0),
+      csvEscape(r.createdAt ?? ""),
+      csvEscape(r.updatedAt ?? ""),
+    ];
+
+    return cells.join(",");
+  });
+
+  downloadText("wagecheck-all-shifts.csv", [header, ...rowsCsv].join("\n"));
+}
+
+/* ------------------------------------------------------------------------- */
 
 // FULL flags that mean "not worked" (Double is NOT one of these)
 function isOffFullFlag(
@@ -122,29 +242,6 @@ function isOffFullFlag(
   );
 }
 
-/**
- * Business rules implemented (updated to match your examples):
- *
- * Worked (physical) = hours from start/end,
- *   except if FULL Holiday/Unpaid/Lieu/BH => worked = 0.
- *
- * Scheduled portion = scheduledHours if set, else worked.
- *
- * Remainder = max(0, scheduled - worked).
- * PART flags (P) consume the remainder (NOT half), in priority order:
- *   Unpaid(P) -> Holiday(P) -> Lieu(P) -> BH(P) -> Double(P)
- *
- * FULL flags:
- *   - Unpaid(Y), Holiday(Y), Lieu(Y), BH(Y) consume the entire scheduled portion.
- *   - Double(Y) consumes the scheduled portion too (but DOES NOT zero worked).
- *
- * Premiums:
- *   - Blocked only for FULL Holiday (Y) or FULL Unpaid (Y)
- *   - Premiums are protected if LIEU/BH/Double set (Y or P)
- *       - LIEU/BH: use scheduled end (start + scheduled)
- *       - Double: use actual end IF worked > scheduled, else scheduled end
- *   - If not protected: premiums only count when worked > 0, using actual end
- */
 function computeRowBreakdown(r: ShiftRow) {
   const sh = clampNonNeg(Number(r.scheduledHours) || 0);
   const whRaw = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
@@ -153,7 +250,7 @@ function computeRowBreakdown(r: ShiftRow) {
   const workedPhysical = isOffFullFlag(r) ? 0 : whRaw;
 
   const out = {
-    worked: workedPhysical, // physical
+    worked: workedPhysical,
     hol: 0,
     lieu: 0,
     bankHol: 0,
@@ -165,8 +262,7 @@ function computeRowBreakdown(r: ShiftRow) {
     night: 0,
   };
 
-  // ----- allocate flags on the SCHEDULED portion -----
-  // FULL flags (off types): consume scheduled portion
+  // Allocate flags on the SCHEDULED portion
   if (r.unpaidFlag === "Y") {
     out.unpaidFull = scheduledPortion;
   } else if (r.holidayFlag === "Y") {
@@ -176,10 +272,9 @@ function computeRowBreakdown(r: ShiftRow) {
   } else if (r.bankHolFlag === "Y") {
     out.bankHol = scheduledPortion;
   } else if (r.doubleFlag === "Y") {
-    // Double full = scheduled portion paid at double (still worked physically)
     out.dbl = scheduledPortion;
   } else {
-    // PART flags: consume ONLY the remainder of the scheduled shift (scheduled - worked)
+    // PART flags consume ONLY the remainder (scheduled - worked)
     let remainder = round2(Math.max(0, scheduledPortion - workedPhysical));
 
     const takeRemainder = () => {
@@ -188,14 +283,16 @@ function computeRowBreakdown(r: ShiftRow) {
       return amt;
     };
 
-    if (r.unpaidFlag === "P" && remainder > 0) out.unpaidPart += takeRemainder();
+    if (r.unpaidFlag === "P" && remainder > 0)
+      out.unpaidPart += takeRemainder();
     if (r.holidayFlag === "P" && remainder > 0) out.hol += takeRemainder();
     if (r.lieuFlag === "P" && remainder > 0) out.lieu += takeRemainder();
-    if (r.bankHolFlag === "P" && remainder > 0) out.bankHol += takeRemainder();
+    if (r.bankHolFlag === "P" && remainder > 0)
+      out.bankHol += takeRemainder();
     if (r.doubleFlag === "P" && remainder > 0) out.dbl += takeRemainder();
   }
 
-  // ----- premiums -----
+  // Premiums
   const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
   const premiumsProtected =
     r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
@@ -206,7 +303,7 @@ function computeRowBreakdown(r: ShiftRow) {
     if (premiumsProtected) {
       const schedEnd = sh > 0 ? addHoursToTime(r.startTime, sh) : r.endTime;
 
-      // Double: if worked exceeds scheduled, use actual end to include extra premiums (e.g. 22–05 = 7h)
+      // Double: if worked exceeds scheduled, use actual end to include extra premiums
       const isDouble = r.doubleFlag !== "";
       if (isDouble && sh > 0 && workedPhysical > sh && r.endTime) {
         premEnd = r.endTime;
@@ -218,7 +315,6 @@ function computeRowBreakdown(r: ShiftRow) {
       out.late += clampNonNeg(p.lateHours);
       out.night += clampNonNeg(p.nightHours);
     } else {
-      // Not protected: only if physically worked
       if (workedPhysical > 0) {
         const p = computeLateNightHours(r.startTime, r.endTime);
         out.late += clampNonNeg(p.lateHours);
@@ -236,13 +332,51 @@ function displayFlag(flag: Flag) {
   return "-";
 }
 
+function weekStartLabel(weekStartsOn: number) {
+  const names = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  const i = Number.isFinite(weekStartsOn)
+    ? Math.min(6, Math.max(0, Math.floor(weekStartsOn)))
+    : 0;
+  return names[i];
+}
+
+/**
+ * ✅ SSR-safe rate lookup:
+ * Do NOT call getRateForDate() here (it reads localStorage and causes hydration mismatch).
+ * Instead, derive from the already-loaded `settings` state.
+ */
+function rateForDateFromSettings(settings: Settings, date: string) {
+  const rates = Array.isArray((settings as any)?.rates) ? (settings as any).rates : [];
+  if (!rates.length) return { otThreshold: 0 };
+
+  const sorted = [...rates].sort((a, b) =>
+    a.effectiveDate < b.effectiveDate ? -1 : 1
+  );
+
+  let best = sorted[0];
+  for (const r of sorted) {
+    if (r.effectiveDate <= date) best = r;
+    else break;
+  }
+  return best;
+}
+
 export default function Home() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [rows, setRows] = useState<ShiftRow[]>([]);
-  const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
+  const [hasLoadedRows, setHasLoadedRows] = useState(false); // ✅ prevents overwriting storage with []
 
-  // ✅ NEW: saved-month selection for dropdown UI
-  const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
+  const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
+  const [selectedSavedMonthId, setSelectedSavedMonthId] =
+    useState<string>("");
 
   const [pro, setPro] = useState(false);
   const [proCode, setProCode] = useState("");
@@ -269,24 +403,22 @@ export default function Home() {
   const [sickHours, setSickHours] = useState<string>("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const weekStartsOn = settings.weekStartsOn ?? 0;
+
   function refreshSavedMonths() {
     setSavedMonths(listSavedMonths());
   }
 
-  // Load saved data (settings, current month rows, pro status, saved months)
+  // Load settings / month rows / pro / saved months
   useEffect(() => {
-    // settings
     try {
-      const s = getSettings();
-      setSettings(s);
+      setSettings(getSettings());
     } catch {
       setSettings(DEFAULT_SETTINGS);
     }
 
-    // pro status
     setPro(isProEnabled());
 
-    // month rows
     try {
       const raw = localStorage.getItem(STORAGE_KEY_MONTH);
       if (raw) {
@@ -295,9 +427,10 @@ export default function Home() {
       }
     } catch {
       // ignore
+    } finally {
+      setHasLoadedRows(true); // ✅ NEW
     }
 
-    // saved months
     try {
       refreshSavedMonths();
     } catch {
@@ -305,19 +438,16 @@ export default function Home() {
     }
   }, []);
 
-  // ✅ NEW: keep dropdown selection valid after refresh/delete/unlock
+  // keep dropdown selection valid
   useEffect(() => {
     if (!pro) {
       setSelectedSavedMonthId("");
       return;
     }
-
     if (savedMonths.length === 0) {
       setSelectedSavedMonthId("");
       return;
     }
-
-    // If current selection no longer exists, select first item
     const exists = savedMonths.some((m) => m.id === selectedSavedMonthId);
     if (!selectedSavedMonthId || !exists) {
       setSelectedSavedMonthId(savedMonths[0].id);
@@ -329,21 +459,21 @@ export default function Home() {
     return savedMonths.find((m) => m.id === selectedSavedMonthId) ?? null;
   }, [savedMonths, selectedSavedMonthId]);
 
-  // Persist month rows
+  // Persist month rows (✅ only after we've loaded once)
   useEffect(() => {
+    if (!hasLoadedRows) return;
     try {
       localStorage.setItem(STORAGE_KEY_MONTH, JSON.stringify(rows));
     } catch {
       // ignore
     }
-  }, [rows]);
+  }, [rows, hasLoadedRows]);
 
   const workedHours = useMemo(
     () => computeWorkedHours(startTime, endTime),
     [startTime, endTime]
   );
 
-  // DAILY premiums (mirror monthly logic)
   const prem = useMemo(() => {
     const sh = clampNonNeg(Number(scheduledHours) || 0);
     const wh = clampNonNeg(computeWorkedHours(startTime, endTime));
@@ -356,15 +486,12 @@ export default function Home() {
 
     if (premiumsProtected) {
       const schedEnd = sh > 0 ? addHoursToTime(startTime, sh) : endTime;
-
-      // Double: if worked > scheduled, use actual end
       const isDouble = doubleFlag !== "";
-      const premEnd = isDouble && sh > 0 && wh > sh && endTime ? endTime : schedEnd;
-
+      const premEnd =
+        isDouble && sh > 0 && wh > sh && endTime ? endTime : schedEnd;
       return computeLateNightHours(startTime, premEnd);
     }
 
-    // Not protected: only if physically worked
     if (wh <= 0) return { lateHours: 0, nightHours: 0 };
     return computeLateNightHours(startTime, endTime);
   }, [
@@ -383,15 +510,29 @@ export default function Home() {
     [rows, settings]
   );
 
+  const weeks = useMemo(
+    () => computeWeeklyTotals(rows as any, settings, weekStartsOn),
+    [rows, settings, weekStartsOn]
+  );
+
+  // ✅ OT threshold display (rate-history aware, SSR-safe)
+  const otThresholdDisplay = useMemo(() => {
+    try {
+      return Number(rateForDateFromSettings(settings, date)?.otThreshold ?? 0);
+    } catch {
+      return 0;
+    }
+  }, [settings, date]);
+
   function resetDailyInputs() {
     setScheduledHours("");
     setStartTime("");
     setEndTime("");
     setHolidayFlag("");
     setUnpaidFlag("");
-    setLieuFlag("");
     setBankHolFlag("");
     setDoubleFlag("");
+    setLieuFlag("");
     setSickHours("");
   }
 
@@ -414,12 +555,14 @@ export default function Home() {
     };
 
     setRows((prev) => [row, ...prev]);
+    upsertAllTimeShift(row); // ✅ background log
     resetDailyInputs();
   }
 
   function deleteShift(id: string) {
     if (!confirm("Delete this saved shift?")) return;
     setRows((prev) => prev.filter((r) => r.id !== id));
+    deleteAllTimeShift(id); // ✅ background log
   }
 
   function loadShiftForEdit(row: ShiftRow) {
@@ -444,25 +587,22 @@ export default function Home() {
     const sh = clampNonNeg(Number(scheduledHours) || 0);
     const sick = clampNonNeg(Number(sickHours) || 0);
 
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === editingId
-          ? {
-              ...r,
-              date,
-              scheduledHours: sh,
-              startTime: startTime || "",
-              endTime: endTime || "",
-              holidayFlag,
-              unpaidFlag,
-              lieuFlag,
-              bankHolFlag,
-              doubleFlag,
-              sickHours: sick,
-            }
-          : r
-      )
-    );
+    const updatedRow: ShiftRow = {
+      id: editingId,
+      date,
+      scheduledHours: sh,
+      startTime: startTime || "",
+      endTime: endTime || "",
+      holidayFlag,
+      unpaidFlag,
+      lieuFlag,
+      bankHolFlag,
+      doubleFlag,
+      sickHours: sick,
+    };
+
+    setRows((prev) => prev.map((r) => (r.id === editingId ? updatedRow : r)));
+    upsertAllTimeShift(updatedRow); // ✅ background log
 
     setEditingId(null);
     resetDailyInputs();
@@ -473,20 +613,45 @@ export default function Home() {
     resetDailyInputs();
   }
 
+  function requirePro(action: () => void) {
+    if (!pro) {
+      alert("This is a Pro feature 🔒");
+      return;
+    }
+    action();
+  }
+
   function saveCurrentMonthSnapshot() {
     if (!pro) {
       alert("Pro feature: unlock Pro to save months.");
       return;
     }
-
     if (rows.length === 0) {
       alert("No shifts saved this month yet.");
       return;
     }
 
-    // Month ID uses the currently selected date (YYYY-MM)
     const id = monthIdFromDate(date);
-    const label = labelFromMonthId(id);
+    const defaultLabel = labelFromMonthId(id);
+
+    const customLabelRaw = prompt("Name this saved period:", defaultLabel);
+    if (customLabelRaw === null) return;
+    const label = customLabelRaw.trim() || defaultLabel;
+
+    const existing = savedMonths.find((m) => m.id === id);
+
+    if (existing) {
+      const ok = confirm(
+        `${existing.label} already exists. Overwrite saved period?`
+      );
+      if (!ok) return;
+
+      // ✅ If overwriting, remove the old period's shifts from all-time log
+      const oldRows = (existing.rows ?? []) as ShiftRow[];
+      for (const r of oldRows) {
+        if (r?.id) deleteAllTimeShift(r.id);
+      }
+    }
 
     const entry: SavedMonth = {
       id,
@@ -494,20 +659,18 @@ export default function Home() {
       createdAt: Date.now(),
       shiftCount: rows.length,
       rows,
-      totals: month, // snapshot totals
+      totals: month,
     };
-
-    // If already exists, confirm overwrite
-    const exists = savedMonths.some((m) => m.id === id);
-    if (exists) {
-      const ok = confirm(`${label} already exists. Overwrite saved month?`);
-      if (!ok) return;
-    }
 
     upsertSavedMonth(entry);
     refreshSavedMonths();
 
-    alert(`Saved: ${label}`);
+    // ✅ auto-clear current month list after saving
+    setRows([]);
+    setEditingId(null);
+    resetDailyInputs();
+
+    alert(`Saved: ${label} (current list cleared)`);
   }
 
   function removeSavedMonth(id: string) {
@@ -519,14 +682,51 @@ export default function Home() {
     const found = savedMonths.find((m) => m.id === id);
     const label = found?.label ?? id;
 
-    if (!confirm(`Delete saved month "${label}"?`)) return;
+    const msg =
+      `Delete saved period "${label}"?\n\n` +
+      `This will permanently remove:\n` +
+      `• The saved period entry\n` +
+      `• All shifts stored inside it (also removed from Export ALL shifts)\n\n` +
+      `This cannot be undone.`;
+
+    if (!confirm(msg)) return;
+
+    // ✅ delete the period’s stored shifts from the all-time log
+    const periodRows = (found?.rows ?? []) as ShiftRow[];
+    for (const r of periodRows) {
+      if (r?.id) deleteAllTimeShift(r.id);
+    }
+
     deleteSavedMonth(id);
+    refreshSavedMonths();
+  }
+
+  function renameSavedMonth(id: string) {
+    if (!pro) {
+      alert("Pro feature: unlock Pro to manage saved months.");
+      return;
+    }
+
+    const found = savedMonths.find((m) => m.id === id);
+    if (!found) return;
+
+    const newLabelRaw = prompt("Rename saved month:", found.label);
+    if (newLabelRaw === null) return;
+
+    const newLabel = newLabelRaw.trim();
+    if (!newLabel) {
+      alert("Name cannot be empty.");
+      return;
+    }
+
+    upsertSavedMonth({ ...found, label: newLabel });
     refreshSavedMonths();
   }
 
   function clearMonth() {
     if (!confirm("Clear all saved shifts for this month?")) return;
     setRows([]);
+    // NOTE: does NOT clear all-time log (intentional)
   }
 
   function exportCSV() {
@@ -551,19 +751,19 @@ export default function Home() {
       const b = computeRowBreakdown(r);
 
       const cells = [
-        r.date,
-        r.startTime,
-        r.endTime,
-        String(r.scheduledHours ?? 0),
-        String(worked),
-        String(b.late),
-        String(b.night),
-        r.holidayFlag,
-        r.unpaidFlag,
-        r.lieuFlag,
-        r.bankHolFlag,
-        r.doubleFlag,
-        String(r.sickHours ?? 0),
+        csvEscape(r.date),
+        csvEscape(r.startTime),
+        csvEscape(r.endTime),
+        csvEscape(r.scheduledHours ?? 0),
+        csvEscape(worked),
+        csvEscape(b.late),
+        csvEscape(b.night),
+        csvEscape(r.holidayFlag),
+        csvEscape(r.unpaidFlag),
+        csvEscape(r.lieuFlag),
+        csvEscape(r.bankHolFlag),
+        csvEscape(r.doubleFlag),
+        csvEscape(r.sickHours ?? 0),
       ];
       return cells.join(",");
     });
@@ -587,27 +787,14 @@ export default function Home() {
       `TotalPay=${month.totalPay}`,
     ].join(",");
 
-    const csv = [header, ...rowsCsv, summary].join("\n");
-    downloadText("wage-app-export.csv", csv);
-  }
-
-  function requirePro(action: () => void) {
-    if (!pro) {
-      alert("This is a Pro feature 🔒");
-      return;
-    }
-    action();
+    downloadText("wage-app-export.csv", [header, ...rowsCsv, summary].join("\n"));
   }
 
   const card =
     "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow dark:bg-white/10 dark:border-white/10";
-
   const label = "text-sm text-gray-700 dark:text-white/70";
-
   const input =
     "mt-1 w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
-
-  const APP_VERSION = "1.0.0";
 
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto text-[var(--foreground)]">
@@ -637,7 +824,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* PRO unlock */}
             <div className="mt-3 rounded-xl bg-white/10 p-3 text-sm">
               {pro ? (
                 <div className="text-green-300 font-semibold">
@@ -667,7 +853,7 @@ export default function Home() {
                           setPro(true);
                           setProError(null);
                           setProCode("");
-                          refreshSavedMonths(); // updates UI immediately
+                          refreshSavedMonths();
                         } else {
                           setPro(false);
                           setProError(res.error);
@@ -885,16 +1071,24 @@ export default function Home() {
       <div className={`${card} mb-5`}>
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
           <div className="text-lg font-semibold">This month</div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
-              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold"
+              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold text-white"
               onClick={exportCSV}
             >
               Export CSV
             </button>
 
             <button
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold"
+              className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
+              onClick={exportAllTimeCSV}
+              title="Exports every shift you've ever saved (even across cleared months)"
+            >
+              Export ALL shifts
+            </button>
+
+            <button
+              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"
               onClick={() => requirePro(saveCurrentMonthSnapshot)}
               type="button"
               title={!pro ? "Unlock Pro to save months" : "Save this month"}
@@ -903,7 +1097,7 @@ export default function Home() {
             </button>
 
             <button
-              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
               onClick={clearMonth}
             >
               Clear Month
@@ -916,9 +1110,12 @@ export default function Home() {
           <div>
             Total Worked: <b>{month.worked}</b>
           </div>
+
+          {/* ✅ FIXED: SSR-safe OT threshold display (no localStorage reads during render) */}
           <div>
-            Qualifying (for {settings.otThreshold}): <b>{month.qualifying}</b>
+            Qualifying (for {otThresholdDisplay}): <b>{month.qualifying}</b>
           </div>
+
           <div>
             STD Hours: <b>{month.std}</b>
           </div>
@@ -992,7 +1189,71 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ✅ Saved months (DROPDOWN) */}
+      {/* Weekly summary */}
+      <div className={`${card} mb-5`}>
+        <div className="text-lg font-semibold mb-2">Weekly summary</div>
+        <div className="text-xs text-gray-600 dark:text-white/60 mb-3">
+          Week start: {weekStartLabel(weekStartsOn)} (set in Settings)
+        </div>
+
+        {weeks.length === 0 ? (
+          <div className="text-sm text-gray-600 dark:text-white/60">
+            No shifts yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {weeks.slice(0, 6).map((w) => (
+              <div
+                key={w.weekId}
+                className="rounded-xl bg-black/10 dark:bg-black/20 p-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-semibold">{w.label}</div>
+                  <div className="text-sm">
+                    Total: <b>{fmtGBP(w.totalPay)}</b>
+                  </div>
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-1 text-sm">
+                  <div>
+                    Worked: <b>{w.worked}</b>
+                  </div>
+                  <div>
+                    Qualifying: <b>{w.qualifying}</b>
+                  </div>
+                  <div>
+                    STD: <b>{w.std}</b>
+                  </div>
+                  <div>
+                    OT: <b>{w.ot}</b>
+                  </div>
+                  <div>
+                    Holiday: <b>{w.hol}</b>
+                  </div>
+                  <div>
+                    LIEU: <b>{w.lieu}</b>
+                  </div>
+                  <div>
+                    BH: <b>{w.bankHol}</b>
+                  </div>
+                  <div>
+                    Double: <b>{w.dbl}</b>
+                  </div>
+                  <div>
+                    Late: <b>{w.late}</b>
+                  </div>
+                  <div>
+                    Night: <b>{w.night}</b>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Saved months (dropdown) */}
+      {/* ...unchanged below... */}
       <div className={`${card} mt-5`}>
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
           <div className="text-lg font-semibold">Saved months</div>
@@ -1033,21 +1294,34 @@ export default function Home() {
 
                 <div className="text-xs text-gray-600 dark:text-white/60 mt-1">
                   {selectedSavedMonth
-                    ? `Shifts: ${selectedSavedMonth.shiftCount} • Saved: ${new Date(
+                    ? `Shifts: ${
+                        selectedSavedMonth.shiftCount
+                      } • Saved: ${new Date(
                         selectedSavedMonth.createdAt
                       ).toLocaleString()}`
                     : ""}
                 </div>
               </div>
 
-              <div className="flex items-end justify-end">
+              <div className="flex items-end justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!selectedSavedMonth) return;
-                    removeSavedMonth(selectedSavedMonth.id);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+                  onClick={() =>
+                    selectedSavedMonth &&
+                    renameSavedMonth(selectedSavedMonth.id)
+                  }
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"
+                >
+                  Rename
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectedSavedMonth &&
+                    removeSavedMonth(selectedSavedMonth.id)
+                  }
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
                 >
                   Delete selected
                 </button>
@@ -1056,14 +1330,17 @@ export default function Home() {
 
             {selectedSavedMonth && (
               <div className="mt-4 rounded-xl bg-black/20 p-3">
-                <div className="font-semibold mb-2">{selectedSavedMonth.label}</div>
+                <div className="font-semibold mb-2">
+                  {selectedSavedMonth.label}
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-white/80">
                   <div>
                     Worked: <b>{selectedSavedMonth.totals?.worked ?? 0}</b>
                   </div>
                   <div>
-                    Qualifying: <b>{selectedSavedMonth.totals?.qualifying ?? 0}</b>
+                    Qualifying:{" "}
+                    <b>{selectedSavedMonth.totals?.qualifying ?? 0}</b>
                   </div>
                   <div>
                     STD: <b>{selectedSavedMonth.totals?.std ?? 0}</b>
@@ -1072,13 +1349,26 @@ export default function Home() {
                     OT: <b>{selectedSavedMonth.totals?.ot ?? 0}</b>
                   </div>
                   <div>
+                    Holiday: <b>{selectedSavedMonth.totals?.hol ?? 0}</b>
+                  </div>
+                  <div>
+                    LIEU: <b>{selectedSavedMonth.totals?.lieu ?? 0}</b>
+                  </div>
+                  <div>
+                    BH: <b>{selectedSavedMonth.totals?.bankHol ?? 0}</b>
+                  </div>
+                  <div>
+                    Double: <b>{selectedSavedMonth.totals?.dbl ?? 0}</b>
+                  </div>
+                  <div>
                     Late: <b>{selectedSavedMonth.totals?.late ?? 0}</b>
                   </div>
                   <div>
                     Night: <b>{selectedSavedMonth.totals?.night ?? 0}</b>
                   </div>
                   <div>
-                    Total pay: <b>{fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}</b>
+                    Total pay:{" "}
+                    <b>{fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}</b>
                   </div>
                 </div>
               </div>
@@ -1088,7 +1378,7 @@ export default function Home() {
       </div>
 
       {/* Saved shifts */}
-      <div className={`${card}`}>
+      <div className={`${card} mt-5`}>
         <div className="text-lg font-semibold mb-3">Saved shifts</div>
 
         {rows.length === 0 ? (
@@ -1120,10 +1410,7 @@ export default function Home() {
 
                         <button
                           type="button"
-                          onClick={() => {
-                            console.log("DELETE CLICKED", r.id);
-                            deleteShift(r.id);
-                          }}
+                          onClick={() => deleteShift(r.id)}
                           className="text-xs px-2 py-1 rounded bg-red-500 text-white"
                         >
                           Delete

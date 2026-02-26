@@ -1,4 +1,6 @@
+// app/lib/engine/month.ts
 import type { Settings } from "../settings";
+import { getRateForDate } from "../settings";
 
 export type Flag = "" | "Y" | "P";
 
@@ -7,7 +9,7 @@ export type ShiftRow = {
   date: string;
   scheduledHours?: number;
   startTime?: string; // "HH:MM"
-  endTime?: string;   // "HH:MM"
+  endTime?: string; // "HH:MM"
   holidayFlag?: Flag;
   unpaidFlag?: Flag;
   lieuFlag?: Flag;
@@ -17,16 +19,16 @@ export type ShiftRow = {
 };
 
 export type MonthTotals = {
-  worked: number;       // physical worked hours (from times, except full HOL/Unpaid/Lieu/BH)
-  qualifying: number;   // counts for OT trigger
-  std: number;          // standard paid hours (worked only, excluding double + OT)
-  ot: number;           // OT paid hours (worked only, excluding double)
+  worked: number;
+  qualifying: number;
+  std: number;
+  ot: number;
   late: number;
   night: number;
   hol: number;
   lieu: number;
   bankHol: number;
-  dbl: number;          // hours paid at double rate (subset of worked)
+  dbl: number;
   unpaidFull: number;
   unpaidPart: number;
   sick: number;
@@ -83,7 +85,8 @@ function computeWorkedHours(startTime?: string, endTime?: string) {
 function computeLateNightHours(startTime?: string, endTime?: string) {
   const s0 = toMinutes(startTime || "");
   const e0 = toMinutes(endTime || "");
-  if (!Number.isFinite(s0) || !Number.isFinite(e0)) return { lateHours: 0, nightHours: 0 };
+  if (!Number.isFinite(s0) || !Number.isFinite(e0))
+    return { lateHours: 0, nightHours: 0 };
 
   let s = s0;
   let e = e0;
@@ -142,19 +145,13 @@ export function emptyMonthTotals(): MonthTotals {
 }
 
 /**
- * Rules used (matches what you described):
- * - FULL Holiday/Unpaid: NO premiums. Worked becomes 0. HOL/Unpaid = scheduled shift.
- * - FULL Lieu/BH: Worked becomes 0, but premiums ARE protected (calculated across scheduled shift).
- * - FULL Double: shift is physically worked. Double hours = scheduled shift (or worked if no scheduled). Premiums protected.
- * - PART Holiday/Unpaid/Lieu/BH: you still work the entered time window; remainder = scheduled - worked goes to that flag.
- * - Premium protection applies for Lieu/BH/Double (Y or P). Holiday/Unpaid never protected when FULL.
- * - Qualifying for OT = worked + hol + lieu + bankHol (double is NOT added; it’s a subset of worked).
- * - OT paid hours can only come from worked hours that are NOT already paid as Double.
+ * Row breakdown rules (UNCHANGED)
  */
- function computeRowBreakdown(r: ShiftRow) {
+function computeRowBreakdown(r: ShiftRow) {
   const sh = clampNonNeg(Number(r.scheduledHours) || 0);
-  const whRaw = clampNonNeg(computeWorkedHours(r.startTime ?? "", r.endTime ?? ""));
-
+  const whRaw = clampNonNeg(
+    computeWorkedHours(r.startTime ?? "", r.endTime ?? "")
+  );
   const baseShift = sh > 0 ? sh : whRaw;
 
   // FULL flags
@@ -169,15 +166,10 @@ export function emptyMonthTotals(): MonthTotals {
   const partHol = r.holidayFlag === "P";
   const partLieu = r.lieuFlag === "P";
   const partBH = r.bankHolFlag === "P";
-  const partDouble = r.doubleFlag === "P"; 
+  const partDouble = r.doubleFlag === "P";
 
-  // Worked physical:
-  // - Full HOL/Unpaid/Lieu/BH = not worked
-  // - Full Double = still worked (paid double)
-  const workedPhysical =
-    (fullUnpaid || fullHol || fullLieu || fullBH) ? 0 : whRaw
+  const workedPhysical = fullUnpaid || fullHol || fullLieu || fullBH ? 0 : whRaw;
 
-  // Remainder for PART flags = scheduled - worked
   let remainder = round2(Math.max(0, baseShift - workedPhysical));
 
   const out = {
@@ -193,7 +185,7 @@ export function emptyMonthTotals(): MonthTotals {
     night: 0,
   };
 
-  // FULL allocations (only one should be used)
+  // FULL allocations
   if (fullUnpaid) {
     out.unpaidFull = baseShift;
     remainder = 0;
@@ -208,9 +200,7 @@ export function emptyMonthTotals(): MonthTotals {
     remainder = 0;
   }
 
-  // Double allocation (subset of worked, not remainder)
-  // If FULL double: double the scheduled shift (or the baseShift)
-  // If PART double: half of the scheduled/baseShift, but cannot exceed workedPhysical
+  // Double allocation (subset of worked)
   if (fullDouble) {
     out.dbl = round2(Math.min(baseShift, Math.max(0, whRaw || baseShift)));
   } else if (partDouble) {
@@ -219,52 +209,57 @@ export function emptyMonthTotals(): MonthTotals {
 
   // PART allocations (consume remainder once, priority order)
   if (remainder > 0) {
-    if (partUnpaid) { out.unpaidPart += remainder; remainder = 0; }
-    else if (partHol) { out.hol += remainder; remainder = 0; }
-    else if (partLieu) { out.lieu += remainder; remainder = 0; }
-    else if (partBH) { out.bankHol += remainder; remainder = 0; }
+    if (partUnpaid) {
+      out.unpaidPart += remainder;
+      remainder = 0;
+    } else if (partHol) {
+      out.hol += remainder;
+      remainder = 0;
+    } else if (partLieu) {
+      out.lieu += remainder;
+      remainder = 0;
+    } else if (partBH) {
+      out.bankHol += remainder;
+      remainder = 0;
+    }
   }
 
   // Premiums
-const premiumsBlocked = fullHol || fullUnpaid; // ONLY full hol/unpaid
+  const premiumsBlocked = fullHol || fullUnpaid; // ONLY full hol/unpaid
 
-if (!premiumsBlocked && baseShift > 0 && r.startTime) {
-  const premiumsProtected =
-    (r.lieuFlag ?? "") !== "" ||
-    (r.bankHolFlag ?? "") !== "" ||
-    (r.doubleFlag ?? "") !== "";
+  if (!premiumsBlocked && baseShift > 0 && r.startTime) {
+    const hasEnd = (r.endTime ?? "").trim() !== "";
 
-    const endProvided = (r.endTime ?? "").trim() !== "";
+    const hasLieuOrBH =
+      (r.lieuFlag ?? "").trim() !== "" || (r.bankHolFlag ?? "").trim() !== "";
 
-const hasEnd = (r.endTime ?? "").trim() !== "";
+    const hasDouble = (r.doubleFlag ?? "").trim() !== "";
 
-const hasLieuOrBH =
-  (r.lieuFlag ?? "").trim() !== "" ||
-  (r.bankHolFlag ?? "").trim() !== "";
+    let premEnd = "";
 
-const hasDouble = (r.doubleFlag ?? "").trim() !== "";
-
-let premEnd = "";
-
-// Double: prefer actual endTime (so 17:00→05:00 gives night=7)
-if (hasDouble) {
-  premEnd = hasEnd ? (r.endTime as string)
-    : (sh > 0 ? addHoursToTime(r.startTime, sh) : "");
-}
-// LIEU/BH: premiums are “protected” to the scheduled window (ignore endTime)
-else if (hasLieuOrBH) {
-  premEnd = sh > 0 ? addHoursToTime(r.startTime, sh) : (hasEnd ? (r.endTime as string) : "");
-}
-// Normal: use actual endTime if present, else scheduled
-else {
-  premEnd = hasEnd ? (r.endTime as string)
-    : (sh > 0 ? addHoursToTime(r.startTime, sh) : "");
-}
+    if (hasDouble) {
+      premEnd = hasEnd
+        ? (r.endTime as string)
+        : sh > 0
+          ? addHoursToTime(r.startTime, sh)
+          : "";
+    } else if (hasLieuOrBH) {
+      premEnd = sh > 0
+        ? addHoursToTime(r.startTime, sh)
+        : hasEnd
+          ? (r.endTime as string)
+          : "";
+    } else {
+      premEnd = hasEnd
+        ? (r.endTime as string)
+        : sh > 0
+          ? addHoursToTime(r.startTime, sh)
+          : "";
+    }
 
     const p = computeLateNightHours(r.startTime, premEnd);
+    const premiumsProtected = hasLieuOrBH || hasDouble;
 
-    // If protected: premiums always apply (even if workedPhysical = 0 like full Lieu)
-    // If NOT protected: only apply when physically worked
     if (premiumsProtected || workedPhysical > 0) {
       out.late += clampNonNeg(p.lateHours);
       out.night += clampNonNeg(p.nightHours);
@@ -274,20 +269,39 @@ else {
   return out;
 }
 
+/**
+ * ✅ Date-aware rates (pay rise safe)
+ * - Uses per-day rates for pay
+ * - Locks OT threshold for the period using the FIRST shift date’s threshold
+ * - holidayRate stays manual (not in history)
+ */
 export function computeMonthTotals(rows: ShiftRow[], settings: Settings): MonthTotals {
   const tot = emptyMonthTotals();
-
-  const base = clampNonNeg(settings.baseRate);
-  const otAdd = clampNonNeg(settings.otAddOn);
-  const lateAdd = clampNonNeg(settings.latePremium);
-  const nightAdd = clampNonNeg(settings.nightPremium);
   const holRate = clampNonNeg(settings.holidayRate);
-  const otThreshold = clampNonNeg(settings.otThreshold);
-  const doubleRate = clampNonNeg(settings.doubleRate);
 
-  for (const r of rows) {
+  const ordered = [...(rows || [])].sort((a, b) => {
+    const da = (a.date || "").trim();
+    const db = (b.date || "").trim();
+    if (da !== db) return da < db ? -1 : 1;
+
+    const sa = toMinutes(a.startTime || "");
+    const sb = toMinutes(b.startTime || "");
+    if (Number.isFinite(sa) && Number.isFinite(sb) && sa !== sb) return sa - sb;
+
+    return (a.id || "") < (b.id || "") ? -1 : 1;
+  });
+
+  // ✅ lock OT threshold for the whole period
+  const periodStartDate = ordered.length ? (ordered[0].date || "1900-01-01") : "1900-01-01";
+  const periodOtThreshold = clampNonNeg(getRateForDate(periodStartDate).otThreshold);
+
+  let qualifyingSoFar = 0;
+  let otSoFar = 0;
+
+  for (const r of ordered) {
     const b = computeRowBreakdown(r);
 
+    // hour buckets
     tot.worked += b.worked;
     tot.hol += b.hol;
     tot.lieu += b.lieu;
@@ -300,42 +314,69 @@ export function computeMonthTotals(rows: ShiftRow[], settings: Settings): MonthT
 
     tot.late += b.late;
     tot.night += b.night;
+
+    // date-aware rate for THIS row
+    const rate = getRateForDate(r.date || "1900-01-01");
+    const base = clampNonNeg(rate.baseRate);
+    const otAdd = clampNonNeg(rate.otAddOn);
+    const lateAdd = clampNonNeg(rate.latePremium);
+    const nightAdd = clampNonNeg(rate.nightPremium);
+    const doubleRate = clampNonNeg(rate.doubleRate);
+
+    const qualifyingThisRow = clampNonNeg(b.worked + b.hol + b.lieu + b.bankHol);
+    qualifyingSoFar = round2(qualifyingSoFar + qualifyingThisRow);
+
+    const totalOTShouldBeSoFar = round2(Math.max(0, qualifyingSoFar - periodOtThreshold));
+    let otDelta = round2(Math.max(0, totalOTShouldBeSoFar - otSoFar));
+
+    const workedAvailableForStdOtRow = round2(Math.max(0, b.worked - b.dbl));
+    if (otDelta > workedAvailableForStdOtRow) otDelta = workedAvailableForStdOtRow;
+
+    const stdRow = round2(Math.max(0, workedAvailableForStdOtRow - otDelta));
+    otSoFar = round2(otSoFar + otDelta);
+
+    // pay
+    tot.stdPay += round2(stdRow * base);
+    tot.otPay += round2(otDelta * (base + otAdd));
+    tot.sickPay += round2(b.sick * base);
+
+    tot.lateAddPay += round2(b.late * lateAdd);
+    tot.nightAddPay += round2(b.night * nightAdd);
+
+    tot.lieuPay += round2(b.lieu * base);
+    tot.bankHolPay += round2(b.bankHol * base);
+    tot.doublePay += round2(b.dbl * base * doubleRate);
+
+    tot.holPay += round2(b.hol * holRate);
+
+    tot.std += stdRow;
+    tot.ot += otDelta;
   }
 
-  // Round hour buckets
+  // final rounding
   tot.worked = round2(tot.worked);
+  tot.qualifying = round2(tot.worked + tot.hol + tot.lieu + tot.bankHol);
+  tot.std = round2(tot.std);
+  tot.ot = round2(tot.ot);
+  tot.late = round2(tot.late);
+  tot.night = round2(tot.night);
   tot.hol = round2(tot.hol);
   tot.lieu = round2(tot.lieu);
   tot.bankHol = round2(tot.bankHol);
   tot.dbl = round2(tot.dbl);
-  tot.late = round2(tot.late);
-  tot.night = round2(tot.night);
   tot.unpaidFull = round2(tot.unpaidFull);
   tot.unpaidPart = round2(tot.unpaidPart);
   tot.sick = round2(tot.sick);
 
-  // Qualifying for OT trigger (double is NOT added; it’s a subset of worked)
-  tot.qualifying = round2(tot.worked + tot.hol + tot.lieu + tot.bankHol);
-
-  // OT paid hours can only come from worked hours that are NOT already paid double
-  const otRaw = Math.max(0, tot.qualifying - otThreshold);
-  const workedAvailableForStdOt = Math.max(0, tot.worked - tot.dbl);
-
-  tot.ot = round2(Math.min(workedAvailableForStdOt, otRaw));
-  tot.std = round2(Math.max(0, workedAvailableForStdOt - tot.ot));
-
-  // PAY
-  tot.stdPay = round2(tot.std * base);
-  tot.otPay = round2(tot.ot * (base + otAdd));
-  tot.sickPay = round2(tot.sick * base);
-
-  tot.lateAddPay = round2(tot.late * lateAdd);
-  tot.nightAddPay = round2(tot.night * nightAdd);
-
-  tot.lieuPay = round2(tot.lieu * base);
-  tot.bankHolPay = round2(tot.bankHol * base);
-  tot.doublePay = round2(tot.dbl * base * doubleRate);
-  tot.holPay = round2(tot.hol * holRate);
+  tot.stdPay = round2(tot.stdPay);
+  tot.otPay = round2(tot.otPay);
+  tot.sickPay = round2(tot.sickPay);
+  tot.lateAddPay = round2(tot.lateAddPay);
+  tot.nightAddPay = round2(tot.nightAddPay);
+  tot.lieuPay = round2(tot.lieuPay);
+  tot.bankHolPay = round2(tot.bankHolPay);
+  tot.doublePay = round2(tot.doublePay);
+  tot.holPay = round2(tot.holPay);
 
   tot.totalPay = round2(
     tot.stdPay +
@@ -349,6 +390,5 @@ export function computeMonthTotals(rows: ShiftRow[], settings: Settings): MonthT
       tot.holPay
   );
 
-
-return tot;
+  return tot;
 }
