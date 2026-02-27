@@ -1,13 +1,10 @@
-import Link from "next/link";
+import BackButton from "../components/BackButton";
+
 export default function Privacy() {
   return (
     <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6 text-sm">
-      <Link
-        href="/"
-        className="inline-block mb-6 text-sm px-4 py-2 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
-      >
-        ← Back
-      </Link>
+        <BackButton />
+      
 
       <h1 className="text-2xl font-bold">Privacy Policy</h1>
 
