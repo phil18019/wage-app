@@ -1,6 +1,14 @@
+import Link from "next/link";
 export default function TermsPage() {
   return (
     <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6">
+      
+      <Link
+       href="/"
+     className="inline-flex items-center gap-2 mb-6 text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+    >
+  ← Back
+     </Link>
       <h1 className="text-2xl font-bold">Terms & Conditions</h1>
 
       <p className="text-sm text-gray-600 dark:text-white/60">
