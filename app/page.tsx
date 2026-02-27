@@ -48,6 +48,9 @@ export default function Landing() {
         <Link href="/privacy" className="text-xs opacity-70 hover:opacity-100">
           Privacy Policy
         </Link>
+        <Link href="/terms" className="underline text-sm opacity-70 hover:opacity-100">
+        Terms & Conditions
+       </Link>
       </div>
     </main>
   );
