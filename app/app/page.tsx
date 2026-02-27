@@ -795,7 +795,7 @@ const sickConflict =
     "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow dark:bg-white/10 dark:border-white/10";
   const label = "text-sm text-gray-700 dark:text-white/70";
   const input =
-    "mt-1 w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
+    "mt-1 w-full min-w-0 max-w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white"
 
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto text-[var(--foreground)]">
@@ -890,140 +890,143 @@ const sickConflict =
   )}
 </header>
 
-      {/* This shift */}
-      <div className={`${card} mb-5`}>
-        <div className="text-lg font-semibold mb-3">This shift</div>
+     {/* This shift */}
+<div className={`${card} mb-5`}>
+  <div className="text-lg font-semibold mb-3">This shift</div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <div className={label}>Date</div>
-            <input
-              type="date"
-              className={input}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="min-w-0">
+      <div className={label}>Date</div>
+      <input
+        type="date"
+        className={input}
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+      />
+    </div>
 
-          <div>
-            <div className={label}>Scheduled hours</div>
-            <input
-              className={input}
-              value={scheduledHours}
-              onChange={(e) => setScheduledHours(e.target.value)}
-              placeholder="e.g. 10"
-              inputMode="decimal"
-            />
-          </div>
+    <div className="min-w-0">
+      <div className={label}>Scheduled hours</div>
+      <input
+        className={input}
+        value={scheduledHours}
+        onChange={(e) => setScheduledHours(e.target.value)}
+        placeholder="e.g. 10"
+        inputMode="decimal"
+      />
+    </div>
 
-          <div>
-            <div className={label}>Start</div>
-            <input
-              type="time"
-              step="60"
-              className={input}
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          </div>
+    <div className="min-w-0">
+      <div className={label}>Start</div>
+      <input
+        type="time"
+        step="60"
+        className={input}
+        value={startTime}
+        onChange={(e) => setStartTime(e.target.value)}
+      />
+    </div>
 
-          <div>
-            <div className={label}>Finish</div>
-            <input
-              type="time"
-              step="60"
-              className={input}
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
-          </div>
-          <div className="col-span-2">
-  <button
-    type="button"
-    onClick={() => {
-      setStartTime("");
-      setEndTime("");
-    }}
-    className="mt-2 w-full text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
-  >
-    Clear start / finish times
-  </button>
-</div>
+    <div className="min-w-0">
+      <div className={label}>Finish</div>
+      <input
+        type="time"
+        step="60"
+        className={input}
+        value={endTime}
+        onChange={(e) => setEndTime(e.target.value)}
+      />
+    </div>
 
-          <div>
-            <div className={label}>Holiday</div>
-            <select
-              className={input}
-              value={holidayFlag}
-              onChange={(e) => setHolidayFlag(e.target.value as Flag)}
-            >
-              <option value="">-</option>
-              <option value="Y">Full</option>
-              <option value="P">Part</option>
-            </select>
-          </div>
+    <div className="min-w-0 sm:col-span-2">
+      <button
+        type="button"
+        onClick={() => {
+          setStartTime("");
+          setEndTime("");
+        }}
+        className="mt-2 w-full text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
+      >
+        Clear start / finish times
+      </button>
+    </div>
 
-          <div>
-            <div className={label}>Unpaid</div>
-            <select
-              className={input}
-              value={unpaidFlag}
-              onChange={(e) => setUnpaidFlag(e.target.value as Flag)}
-            >
-              <option value="">-</option>
-              <option value="Y">Full</option>
-              <option value="P">Part</option>
-            </select>
-          </div>
+    <div className="min-w-0">
+      <div className={label}>Holiday</div>
+      <select
+        className={input}
+        value={holidayFlag}
+        onChange={(e) => setHolidayFlag(e.target.value as Flag)}
+      >
+        <option value="">-</option>
+        <option value="Y">Full</option>
+        <option value="P">Part</option>
+      </select>
+    </div>
 
-          <div>
-            <div className={label}>LIEU</div>
-            <select
-              className={input}
-              value={lieuFlag}
-              onChange={(e) => setLieuFlag(e.target.value as Flag)}
-            >
-              <option value="">-</option>
-              <option value="Y">Full</option>
-              <option value="P">Part</option>
-            </select>
-          </div>
+    <div className="min-w-0">
+      <div className={label}>Unpaid</div>
+      <select
+        className={input}
+        value={unpaidFlag}
+        onChange={(e) => setUnpaidFlag(e.target.value as Flag)}
+      >
+        <option value="">-</option>
+        <option value="Y">Full</option>
+        <option value="P">Part</option>
+      </select>
+    </div>
 
-          <div>
-            <div className={label}>BH</div>
-            <select
-              className={input}
-              value={bankHolFlag}
-              onChange={(e) => setBankHolFlag(e.target.value as Flag)}
-            >
-              <option value="">-</option>
-              <option value="Y">Full</option>
-              <option value="P">Part</option>
-            </select>
-          </div>
+    <div className="min-w-0">
+      <div className={label}>LIEU</div>
+      <select
+        className={input}
+        value={lieuFlag}
+        onChange={(e) => setLieuFlag(e.target.value as Flag)}
+      >
+        <option value="">-</option>
+        <option value="Y">Full</option>
+        <option value="P">Part</option>
+      </select>
+    </div>
 
-          <div>
-            <div className={label}>Double</div>
-            <select
-              className={input}
-              value={doubleFlag}
-              onChange={(e) => setDoubleFlag(e.target.value as Flag)}
-            >
-              <option value="">-</option>
-              <option value="Y">Full</option>
-              <option value="P">Part</option>
-            </select>
-          </div>
+    <div className="min-w-0">
+      <div className={label}>BH</div>
+      <select
+        className={input}
+        value={bankHolFlag}
+        onChange={(e) => setBankHolFlag(e.target.value as Flag)}
+      >
+        <option value="">-</option>
+        <option value="Y">Full</option>
+        <option value="P">Part</option>
+      </select>
+    </div>
 
-          <div>
-            <div className={label}>Sick hours</div>
-            <input
-              className={input}
-              value={sickHours}
-              onChange={(e) => setSickHours(e.target.value)}
-              placeholder="0"
-              inputMode="decimal"
-            />
+    <div className="min-w-0">
+      <div className={label}>Double</div>
+      <select
+        className={input}
+        value={doubleFlag}
+        onChange={(e) => setDoubleFlag(e.target.value as Flag)}
+      >
+        <option value="">-</option>
+        <option value="Y">Full</option>
+        <option value="P">Part</option>
+      </select>
+    </div>
+
+    <div className="min-w-0">
+      <div className={label}>Sick hours</div>
+      <input
+        className={input}
+        value={sickHours}
+        onChange={(e) => setSickHours(e.target.value)}
+        placeholder="0"
+        inputMode="decimal"
+      />
+    
+ 
             {sickConflict && (
         <div className="mt-2 rounded-xl bg-red-100 text-red-800 px-3 py-2 text-sm font-medium">
         Start & finish times must be removed when sick hours are entered
