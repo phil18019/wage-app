@@ -9,16 +9,11 @@ export default function Landing() {
           src="/icon-512.png"
           alt="PayCore"
           className="mx-auto h-44 w-44 sm:h-56 sm:w-56 rounded-3xl shadow-lg mb-6"
-
         />
 
-        <div className="perspective">
-         
-        </div>
-
-        <p className="text-gray-600 text-center max-w-md mt-2 mb-6">
-       Take control of your pay. Every hour. Every premium. Every time.
-      </p>
+        <p className="text-gray-600 dark:text-white/70 text-center max-w-md mx-auto mt-2 mb-6">
+          Take control of your pay. Every hour. Every premium. Every time.
+        </p>
 
         <div className="mt-8 grid gap-3 text-left text-sm">
           <div className="rounded-2xl bg-black/5 dark:bg-white/10 p-4">
@@ -43,20 +38,20 @@ export default function Landing() {
         </Link>
       </div>
 
-      {/* Footer link (now forced underneath) */}
-     <div className="mt-10 flex flex-col items-center gap-2 text-xs text-gray-500 dark:text-white/60">
-  <Link href="/privacy" className="hover:opacity-100">
-    Privacy Policy
-  </Link>
+      {/* Footer */}
+      <footer className="mt-10 flex flex-col items-center gap-2 text-xs text-gray-500 dark:text-white/60">
+        <Link href="/privacy" className="opacity-70 hover:opacity-100">
+          Privacy Policy
+        </Link>
 
-  <Link href="/terms" className="hover:opacity-100">
-    Terms & Conditions
-  </Link>
+        <Link href="/terms" className="opacity-70 hover:opacity-100">
+          Terms &amp; Conditions
+        </Link>
 
-  <div className="mt-2 text-[11px] opacity-70">
-    ©️ {new Date().getFullYear()} PayCore
-  </div>
-</div>
+        <div className="mt-2 text-[11px] opacity-70">
+          ©️ {new Date().getFullYear()} PayCore
+        </div>
+      </footer>
     </main>
   );
 }
