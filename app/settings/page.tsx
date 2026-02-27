@@ -1,5 +1,5 @@
 "use client";
-
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -365,6 +365,17 @@ export default function SettingsPage() {
           Saved locally on this device only.
         </p>
       </div>
+      <div className="mt-8 border-t pt-4 text-xs text-center text-gray-500 dark:text-gray-400 space-y-2">
+
+  <Link href="/privacy" className="block hover:underline">
+    Privacy Policy
+  </Link>
+
+  <Link href="/terms" className="block hover:underline">
+    Terms & Conditions
+  </Link>
+
+</div>
     </main>
   );
 }
