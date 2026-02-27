@@ -225,7 +225,7 @@ function exportAllTimeCSV() {
     return cells.join(",");
   });
 
-  downloadText("wagecheck-all-shifts.csv", [header, ...rowsCsv].join("\n"));
+  downloadText("paycore-all-shifts.csv", [header, ...rowsCsv].join("\n"));
 }
 
 /* ------------------------------------------------------------------------- */
@@ -350,13 +350,11 @@ function weekStartLabel(weekStartsOn: number) {
 
 /**
  * ✅ SSR-safe rate lookup:
- * Do NOT call getRateForDate() here (it reads localStorage and causes hydration mismatch).
- * Instead, derive from the already-loaded `settings` state.
+ * Do NOT read localStorage during render.
+ * We derive from already-loaded `settings` state.
  */
 function rateForDateFromSettings(settings: Settings, date: string) {
-  const rates = Array.isArray((settings as any)?.rates)
-    ? (settings as any).rates
-    : [];
+  const rates = Array.isArray((settings as any)?.rates) ? (settings as any).rates : [];
   if (!rates.length) return { otThreshold: 0 };
 
   const sorted = [...rates].sort((a, b) =>
@@ -371,10 +369,16 @@ function rateForDateFromSettings(settings: Settings, date: string) {
   return best;
 }
 
+/* ------------------------------ UI tabs ------------------------------ */
+
+type TabKey = "shift" | "shifts" | "week" | "month" | "history";
+
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<TabKey>("shift");
+
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [rows, setRows] = useState<ShiftRow[]>([]);
-  const [hasLoadedRows, setHasLoadedRows] = useState(false); // ✅ prevents overwriting storage with []
+  const [hasLoadedRows, setHasLoadedRows] = useState(false);
 
   const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
   const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
@@ -429,7 +433,7 @@ export default function Home() {
     } catch {
       // ignore
     } finally {
-      setHasLoadedRows(true); // ✅ NEW
+      setHasLoadedRows(true);
     }
 
     try {
@@ -470,6 +474,8 @@ export default function Home() {
     }
   }, [rows, hasLoadedRows]);
 
+  const sickConflict = Number(sickHours) > 0 && (startTime !== "" || endTime !== "");
+
   const workedHours = useMemo(
     () => computeWorkedHours(startTime, endTime),
     [startTime, endTime]
@@ -505,9 +511,6 @@ export default function Home() {
     bankHolFlag,
     doubleFlag,
   ]);
-
-  const sickConflict =
-    Number(sickHours) > 0 && (startTime !== "" || endTime !== "");
 
   const month = useMemo(
     () => computeMonthTotals(rows as any, settings),
@@ -559,17 +562,19 @@ export default function Home() {
     };
 
     setRows((prev) => [row, ...prev]);
-    upsertAllTimeShift(row); // ✅ background log
+    upsertAllTimeShift(row);
     resetDailyInputs();
   }
 
   function deleteShift(id: string) {
     if (!confirm("Delete this saved shift?")) return;
     setRows((prev) => prev.filter((r) => r.id !== id));
-    deleteAllTimeShift(id); // ✅ background log
+    deleteAllTimeShift(id);
   }
 
   function loadShiftForEdit(row: ShiftRow) {
+    setActiveTab("shift");
+
     setDate(row.date);
     setScheduledHours(String(row.scheduledHours ?? ""));
     setStartTime(row.startTime || "");
@@ -583,16 +588,6 @@ export default function Home() {
     setSickHours(String(row.sickHours ?? ""));
 
     setEditingId(row.id);
-
-    // nice UX: scroll to the input card when editing from lower down
-    try {
-      document.getElementById("card-this-shift")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    } catch {
-      // ignore
-    }
   }
 
   function updateShift() {
@@ -616,7 +611,7 @@ export default function Home() {
     };
 
     setRows((prev) => prev.map((r) => (r.id === editingId ? updatedRow : r)));
-    upsertAllTimeShift(updatedRow); // ✅ background log
+    upsertAllTimeShift(updatedRow);
 
     setEditingId(null);
     resetDailyInputs();
@@ -655,12 +650,9 @@ export default function Home() {
     const existing = savedMonths.find((m) => m.id === id);
 
     if (existing) {
-      const ok = confirm(
-        `${existing.label} already exists. Overwrite saved period?`
-      );
+      const ok = confirm(`${existing.label} already exists. Overwrite saved period?`);
       if (!ok) return;
 
-      // ✅ If overwriting, remove the old period's shifts from all-time log
       const oldRows = (existing.rows ?? []) as ShiftRow[];
       for (const r of oldRows) {
         if (r?.id) deleteAllTimeShift(r.id);
@@ -679,7 +671,6 @@ export default function Home() {
     upsertSavedMonth(entry);
     refreshSavedMonths();
 
-    // ✅ auto-clear current month list after saving
     setRows([]);
     setEditingId(null);
     resetDailyInputs();
@@ -705,7 +696,6 @@ export default function Home() {
 
     if (!confirm(msg)) return;
 
-    // ✅ delete the period’s stored shifts from the all-time log
     const periodRows = (found?.rows ?? []) as ShiftRow[];
     for (const r of periodRows) {
       if (r?.id) deleteAllTimeShift(r.id);
@@ -801,146 +791,74 @@ export default function Home() {
       `TotalPay=${month.totalPay}`,
     ].join(",");
 
-    downloadText("wage-app-export.csv", [header, ...rowsCsv, summary].join("\n"));
+    downloadText("paycore-export.csv", [header, ...rowsCsv, summary].join("\n"));
   }
 
-  /* ------------------------- styling tokens ------------------------- */
+  /* ------------------------------ styles ------------------------------ */
 
   const card =
-    "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow-sm dark:bg-white/10 dark:border-white/10";
+    "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow dark:bg-white/10 dark:border-white/10";
   const label = "text-sm text-gray-700 dark:text-white/70";
+
+  // ✅ important for mobile: prevents time inputs/selects from forcing overflow
   const input =
     "mt-1 w-full min-w-0 max-w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
 
-  const tile =
-    "rounded-xl bg-white/70 border border-gray-200 px-3 py-2 dark:bg-black/20 dark:border-white/10";
-  const tileK = "text-xs text-gray-600 dark:text-white/60";
-  const tileV = "text-lg font-bold text-gray-900 dark:text-white";
-
-  function StatTile(props: { k: string; v: React.ReactNode; sub?: string }) {
-    return (
-      <div className={tile}>
-        <div className={tileK}>{props.k}</div>
-        <div className={tileV}>{props.v}</div>
-        {props.sub ? (
-          <div className="text-[11px] text-gray-500 dark:text-white/45 mt-0.5">
-            {props.sub}
-          </div>
-        ) : null}
-      </div>
-    );
+  function tabButtonClass(isActive: boolean, locked?: boolean) {
+    return [
+      "flex-1 rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold border",
+      isActive
+        ? "bg-blue-600 text-white border-blue-700"
+        : "bg-white/70 dark:bg-white/10 text-gray-900 dark:text-white border-gray-200 dark:border-white/10",
+      locked ? "opacity-80" : "",
+    ].join(" ");
   }
 
+  /* ------------------------------ render ------------------------------ */
+
   return (
-    <>
-      <main className="min-h-screen p-6 max-w-4xl mx-auto text-[var(--foreground)] pb-28">
-        {/* Header */}
-        <header className="mb-5">
-          <div className="flex items-center justify-between gap-3">
-            {/* Left */}
-            <div className="flex items-center gap-3 min-w-0">
-              {/* Small icon (optional, keeps branding without clutter) */}
-              <img
-                src="/icon-192.png"
-                alt="PayCore"
-                className="h-12 w-12 rounded-2xl shadow bg-white"
-              />
-
-              <div className="min-w-0">
-                <div className="font-semibold leading-tight">PayCore</div>
-                <p className="text-xs text-gray-600 dark:text-white/60 truncate">
-                  v{APP_VERSION} • Created by Phil Crompton
-                </p>
-              </div>
+    <main className="min-h-screen p-4 sm:p-6 max-w-4xl mx-auto text-[var(--foreground)] pb-28">
+      {/* Top mini header */}
+      <header className="mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs text-gray-600 dark:text-white/60 truncate">
+              v{APP_VERSION} • Created by Phil Crompton
             </div>
-
-            {/* Right */}
-            <nav className="flex items-center gap-2 shrink-0">
-              <Link
-                href="/help"
-                className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-              >
-                Help
-              </Link>
-
-              {/* Settings + subtle Pro lock hint */}
-              <div className="relative group">
-                <Link
-                  href="/settings"
-                  className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 inline-flex items-center gap-2"
-                >
-                  Settings
-                  {!pro && (
-                    <span className="text-xs opacity-90" aria-label="Pro locked">
-                      🔒
-                    </span>
-                  )}
-                </Link>
-
-                {!pro && (
-                  <div className="pointer-events-none absolute right-0 mt-2 hidden group-hover:block">
-                    <div className="rounded-xl bg-black text-white text-xs px-3 py-2 shadow-lg whitespace-nowrap">
-                      Pro features locked — enter code to unlock
-                    </div>
-                  </div>
-                )}
-              </div>
-            </nav>
-          </div>
-
-          {/* Pro unlock box (only when not Pro) — smaller + calmer */}
-          {!pro && (
-            <div className="mt-4 rounded-2xl bg-white/10 border border-white/10 p-4">
-              <div className="font-semibold mb-2">Unlock Pro</div>
-
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  value={proCode}
-                  onChange={(e) => {
-                    setProCode(e.target.value);
-                    setProError(null);
-                  }}
-                  placeholder="Enter Pro code"
-                  className="flex-1 rounded-xl bg-black/30 px-3 py-2 text-white placeholder:text-white/40"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const res = tryUnlockPro(proCode);
-                    if (res.ok) {
-                      setPro(true);
-                      setProError(null);
-                      setProCode("");
-                      refreshSavedMonths();
-                    } else {
-                      setPro(false);
-                      setProError(res.error);
-                    }
-                  }}
-                  className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 font-semibold text-white"
-                >
-                  Unlock
-                </button>
-              </div>
-
-              {proError && (
-                <div className="mt-2 text-red-300 text-sm">{proError}</div>
+            <div className="mt-1">
+              {pro ? (
+                <span className="inline-flex items-center gap-2 rounded-full bg-green-100 text-green-900 px-3 py-1 text-xs font-semibold">
+                  Pro unlocked ✅
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2 rounded-full bg-yellow-100 text-yellow-900 px-3 py-1 text-xs font-semibold">
+                  Free version — Pro locked 🔒
+                </span>
               )}
             </div>
-          )}
-        </header>
-
-        {/* This shift (single input card — unchanged structure, just cleaner) */}
-        <div id="card-this-shift" className={`${card} mb-5`}>
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="text-lg font-semibold">This shift</div>
-            {editingId ? (
-              <div className="text-xs rounded-full bg-blue-600/20 text-blue-800 dark:text-blue-200 px-3 py-1">
-                Editing saved shift
-              </div>
-            ) : null}
           </div>
+
+          <nav className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/help"
+              className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+            >
+              Help
+            </Link>
+            <Link
+              href="/settings"
+              className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+            >
+              Settings
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      {/* -------------------- SHIFT TAB -------------------- */}
+      {activeTab === "shift" && (
+        <div className={card}>
+          <div className="text-lg font-semibold mb-3">This shift</div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="min-w-0">
@@ -993,13 +911,13 @@ export default function Home() {
                   setStartTime("");
                   setEndTime("");
                 }}
-                className="mt-1 w-full text-xs px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10"
+                className="mt-1 w-full text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
               >
                 Clear start / finish times
               </button>
             </div>
 
-            {/* Flags (kept all in this card, per your requirement) */}
+            {/* Flags (keep in one card, as requested) */}
             <div className="min-w-0">
               <div className={label}>Holiday</div>
               <select
@@ -1077,22 +995,31 @@ export default function Home() {
 
               {sickConflict && (
                 <div className="mt-2 rounded-xl bg-red-100 text-red-800 px-3 py-2 text-sm font-medium">
-                  Start &amp; finish times must be removed when sick hours are
-                  entered
+                  Start &amp; finish times must be removed when sick hours are entered
                 </div>
               )}
             </div>
           </div>
 
-          {/* Small live tiles */}
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <StatTile k="Worked hours" v={workedHours} />
-            <StatTile k="Premiums (Late / Night)" v={`${prem.lateHours} / ${prem.nightHours}`} />
-            <StatTile k="OT threshold" v={otThresholdDisplay} sub="from rate history" />
-            <StatTile k="Editing?" v={editingId ? "Yes" : "No"} />
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
+              <div className="text-sm text-gray-700 dark:text-white/70">Worked hours</div>
+              <div className="text-xl font-bold text-gray-900 dark:text-white">{workedHours}</div>
+            </div>
+
+            <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
+              <div className="text-sm text-gray-700 dark:text-white/70">
+                Premiums today (Late / Night)
+              </div>
+              <div className="text-xl font-bold text-gray-900 dark:text-white">
+                {prem.lateHours} / {prem.nightHours}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-white/50 mt-1">
+                Late window 14:00–22:00 • Night window 22:00–06:00
+              </div>
+            </div>
           </div>
 
-          {/* Save/Update */}
           {editingId ? (
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
@@ -1113,7 +1040,7 @@ export default function Home() {
             </div>
           ) : (
             <button
-              className="mt-4 w-full rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-3 font-semibold text-white"
+              className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold border border-white/10"
               onClick={saveDayToMonth}
               type="button"
             >
@@ -1121,27 +1048,22 @@ export default function Home() {
             </button>
           )}
         </div>
+      )}
 
-        {/* Daily shifts (separate card, edit sends user back to This shift) */}
-        <div className={`${card} mb-5`}>
-          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-            <div className="text-lg font-semibold">Daily shifts</div>
-            <div className="text-xs text-gray-600 dark:text-white/60">
-              Tap Edit to load into “This shift”
-            </div>
-          </div>
+      {/* -------------------- SHIFTS TAB -------------------- */}
+      {activeTab === "shifts" && (
+        <div className={card}>
+          <div className="text-lg font-semibold mb-3">Daily shifts</div>
 
           {rows.length === 0 ? (
-            <div className="text-sm text-gray-600 dark:text-white/60">
-              No saved shifts yet.
-            </div>
+            <div className="text-sm text-gray-600 dark:text-white/60">No saved shifts yet.</div>
           ) : (
             <div className="space-y-3">
               {rows.map((r) => {
                 const wh = computeWorkedHours(r.startTime, r.endTime);
                 return (
                   <div key={r.id} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="font-semibold">{r.date}</div>
 
                       <div className="flex items-center gap-3">
@@ -1153,7 +1075,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => loadShiftForEdit(r)}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
+                            className="text-xs px-2 py-1 rounded bg-blue-500 text-white"
                           >
                             Edit
                           </button>
@@ -1161,7 +1083,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => deleteShift(r.id)}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white"
+                            className="text-xs px-2 py-1 rounded bg-red-500 text-white"
                           >
                             Delete
                           </button>
@@ -1169,38 +1091,30 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                      <div className={tile}>
-                        <div className={tileK}>Scheduled</div>
-                        <div className="font-semibold">{r.scheduledHours ?? 0}</div>
+                    <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+                      <div>
+                        Scheduled: <b>{r.scheduledHours ?? 0}</b>
                       </div>
-                      <div className={tile}>
-                        <div className={tileK}>Worked</div>
-                        <div className="font-semibold">{wh}</div>
+                      <div>
+                        Worked: <b>{wh}</b>
                       </div>
-                      <div className={tile}>
-                        <div className={tileK}>Holiday</div>
-                        <div className="font-semibold">{displayFlag(r.holidayFlag)}</div>
+                      <div>
+                        Holiday: <b>{displayFlag(r.holidayFlag)}</b>
                       </div>
-                      <div className={tile}>
-                        <div className={tileK}>Unpaid</div>
-                        <div className="font-semibold">{displayFlag(r.unpaidFlag)}</div>
+                      <div>
+                        Unpaid: <b>{displayFlag(r.unpaidFlag)}</b>
                       </div>
-                      <div className={tile}>
-                        <div className={tileK}>LIEU</div>
-                        <div className="font-semibold">{displayFlag(r.lieuFlag)}</div>
+                      <div>
+                        LIEU: <b>{displayFlag(r.lieuFlag)}</b>
                       </div>
-                      <div className={tile}>
-                        <div className={tileK}>BH</div>
-                        <div className="font-semibold">{displayFlag(r.bankHolFlag)}</div>
+                      <div>
+                        BH: <b>{displayFlag(r.bankHolFlag)}</b>
                       </div>
-                      <div className={tile}>
-                        <div className={tileK}>Double</div>
-                        <div className="font-semibold">{displayFlag(r.doubleFlag)}</div>
+                      <div>
+                        Double: <b>{displayFlag(r.doubleFlag)}</b>
                       </div>
-                      <div className={tile}>
-                        <div className={tileK}>Sick</div>
-                        <div className="font-semibold">{r.sickHours ?? 0}</div>
+                      <div>
+                        Sick: <b>{r.sickHours ?? 0}</b>
                       </div>
                     </div>
                   </div>
@@ -1209,17 +1123,78 @@ export default function Home() {
             </div>
           )}
         </div>
+      )}
 
-        {/* This month (tiles instead of long text lists) */}
-        <div className={`${card} mb-5`}>
+      {/* -------------------- WEEK TAB -------------------- */}
+      {activeTab === "week" && (
+        <div className={card}>
+          <div className="text-lg font-semibold mb-2">Weekly summary</div>
+          <div className="text-xs text-gray-600 dark:text-white/60 mb-3">
+            Week start: {weekStartLabel(weekStartsOn)} (set in Settings)
+          </div>
+
+          {weeks.length === 0 ? (
+            <div className="text-sm text-gray-600 dark:text-white/60">No shifts yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {weeks.slice(0, 8).map((w) => (
+                <div key={w.weekId} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-semibold">{w.label}</div>
+                    <div className="text-sm">
+                      Total: <b>{fmtGBP(w.totalPay)}</b>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+                    <div>
+                      Worked: <b>{w.worked}</b>
+                    </div>
+                    <div>
+                      Qualifying: <b>{w.qualifying}</b>
+                    </div>
+                    <div>
+                      STD: <b>{w.std}</b>
+                    </div>
+                    <div>
+                      OT: <b>{w.ot}</b>
+                    </div>
+                    <div>
+                      Holiday: <b>{w.hol}</b>
+                    </div>
+                    <div>
+                      LIEU: <b>{w.lieu}</b>
+                    </div>
+                    <div>
+                      BH: <b>{w.bankHol}</b>
+                    </div>
+                    <div>
+                      Double: <b>{w.dbl}</b>
+                    </div>
+                    <div>
+                      Late: <b>{w.late}</b>
+                    </div>
+                    <div>
+                      Night: <b>{w.night}</b>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* -------------------- MONTH TAB -------------------- */}
+      {activeTab === "month" && (
+        <div className={card}>
           <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
             <div className="text-lg font-semibold">This month</div>
 
             <div className="flex gap-2 flex-wrap">
               <button
-                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 font-semibold text-white"
+                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold text-white"
                 onClick={exportCSV}
-                type="button"
               >
                 Export CSV
               </button>
@@ -1227,7 +1202,6 @@ export default function Home() {
               <button
                 className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
                 onClick={exportAllTimeCSV}
-                type="button"
                 title="Exports every shift you've ever saved (even across cleared months)"
               >
                 Export ALL shifts
@@ -1239,123 +1213,164 @@ export default function Home() {
                 type="button"
                 title={!pro ? "Unlock Pro to save months" : "Save this month"}
               >
-                Save Month
+                Save Month {pro ? "" : "🔒"}
               </button>
 
               <button
                 className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
                 onClick={clearMonth}
-                type="button"
               >
-                Clear Month
+                Clear
               </button>
             </div>
           </div>
 
-          <div className="text-sm font-semibold mb-2">Hours</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            <StatTile k="Worked" v={month.worked} />
-            <StatTile k={`Qualifying (for ${otThresholdDisplay})`} v={month.qualifying} />
-            <StatTile k="STD hours" v={month.std} />
-            <StatTile k="OT hours" v={month.ot} />
-            <StatTile k="Late prem" v={month.late} />
-            <StatTile k="Night prem" v={month.night} />
-            <StatTile k="Holiday" v={month.hol} />
-            <StatTile k="LIEU" v={month.lieu} />
-            <StatTile k="BH" v={month.bankHol} />
-            <StatTile k="Double" v={month.dbl} />
-            <StatTile k="Unpaid (full)" v={month.unpaidFull} />
-            <StatTile k="Unpaid (part)" v={month.unpaidPart} />
-            <StatTile k="Sick" v={month.sick} />
+          <div className="text-lg font-semibold mb-2">Hours</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+            <div>
+              Total Worked: <b>{month.worked}</b>
+            </div>
+
+            <div>
+              Qualifying (for {otThresholdDisplay}): <b>{month.qualifying}</b>
+            </div>
+
+            <div>
+              STD Hours: <b>{month.std}</b>
+            </div>
+            <div>
+              OT Hours: <b>{month.ot}</b>
+            </div>
+            <div>
+              Late Prem: <b>{month.late}</b>
+            </div>
+            <div>
+              Night Prem: <b>{month.night}</b>
+            </div>
+            <div>
+              HOL Hours: <b>{month.hol}</b>
+            </div>
+            <div>
+              LIEU Hours: <b>{month.lieu}</b>
+            </div>
+            <div>
+              BH Hours: <b>{month.bankHol}</b>
+            </div>
+            <div>
+              Double Hours: <b>{month.dbl}</b>
+            </div>
+            <div>
+              Unpaid (Full): <b>{month.unpaidFull}</b>
+            </div>
+            <div>
+              Unpaid (Part): <b>{month.unpaidPart}</b>
+            </div>
+            <div>
+              Sick Hours: <b>{month.sick}</b>
+            </div>
           </div>
 
           <div className="pt-4 mt-4 border-t border-white/20">
-            <div className="text-sm font-semibold mb-2">Pay (£)</div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-              <StatTile k="STD pay" v={fmtGBP(month.stdPay)} />
-              <StatTile k="OT pay" v={fmtGBP(month.otPay)} />
-              <StatTile k="Sick pay" v={fmtGBP(month.sickPay)} />
-              <StatTile k="Late add-on" v={fmtGBP(month.lateAddPay)} />
-              <StatTile k="Night add-on" v={fmtGBP(month.nightAddPay)} />
-              <StatTile k="LIEU pay" v={fmtGBP(month.lieuPay)} />
-              <StatTile k="BH pay" v={fmtGBP(month.bankHolPay)} />
-              <StatTile k="Double pay" v={fmtGBP(month.doublePay)} />
-              <StatTile k="Holiday pay" v={fmtGBP(month.holPay)} />
+            <div className="text-lg font-semibold mb-2">Pay (£)</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+              <div>
+                STD pay: <b>{fmtGBP(month.stdPay)}</b>
+              </div>
+              <div>
+                OT pay: <b>{fmtGBP(month.otPay)}</b>
+              </div>
+              <div>
+                Sick pay: <b>{fmtGBP(month.sickPay)}</b>
+              </div>
+              <div>
+                Late add-on: <b>{fmtGBP(month.lateAddPay)}</b>
+              </div>
+              <div>
+                Night add-on: <b>{fmtGBP(month.nightAddPay)}</b>
+              </div>
+              <div>
+                LIEU pay: <b>{fmtGBP(month.lieuPay)}</b>
+              </div>
+              <div>
+                BH pay: <b>{fmtGBP(month.bankHolPay)}</b>
+              </div>
+              <div>
+                Double pay: <b>{fmtGBP(month.doublePay)}</b>
+              </div>
+              <div>
+                Holiday pay: <b>{fmtGBP(month.holPay)}</b>
+              </div>
             </div>
 
-            <div className="mt-3 rounded-xl bg-blue-600/15 border border-blue-600/20 px-4 py-3 flex items-center justify-between">
-              <div className="text-sm font-semibold">Total pay</div>
-              <div className="text-xl font-bold">{fmtGBP(month.totalPay)}</div>
-            </div>
+            <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
           </div>
         </div>
+      )}
 
-        {/* Weekly summary */}
-        <div className={`${card} mb-5`}>
-          <div className="text-lg font-semibold mb-2">Weekly summary</div>
-          <div className="text-xs text-gray-600 dark:text-white/60 mb-3">
-            Week start: {weekStartLabel(weekStartsOn)} (set in Settings)
-          </div>
-
-          {weeks.length === 0 ? (
-            <div className="text-sm text-gray-600 dark:text-white/60">
-              No shifts yet.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {weeks.slice(0, 6).map((w) => (
-                <div
-                  key={w.weekId}
-                  className="rounded-xl bg-black/10 dark:bg-black/20 p-3"
-                >
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="font-semibold">{w.label}</div>
-                    <div className="text-sm">
-                      Total: <b>{fmtGBP(w.totalPay)}</b>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                    <StatTile k="Worked" v={w.worked} />
-                    <StatTile k="Qualifying" v={w.qualifying} />
-                    <StatTile k="STD" v={w.std} />
-                    <StatTile k="OT" v={w.ot} />
-                    <StatTile k="Holiday" v={w.hol} />
-                    <StatTile k="LIEU" v={w.lieu} />
-                    <StatTile k="BH" v={w.bankHol} />
-                    <StatTile k="Double" v={w.dbl} />
-                    <StatTile k="Late" v={w.late} />
-                    <StatTile k="Night" v={w.night} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Saved months */}
-        <div className={`${card} mt-5`}>
+      {/* -------------------- HISTORY TAB (PRO) -------------------- */}
+      {activeTab === "history" && (
+        <div className={card}>
           <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <div className="text-lg font-semibold">Saved months</div>
-            <button
-              type="button"
-              onClick={refreshSavedMonths}
-              className="text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-              title="Refresh saved months list"
-            >
-              Refresh
-            </button>
+            <div className="text-lg font-semibold">History</div>
+
+            {pro && (
+              <button
+                type="button"
+                onClick={refreshSavedMonths}
+                className="text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+                title="Refresh saved months list"
+              >
+                Refresh
+              </button>
+            )}
           </div>
 
           {!pro ? (
-            <div className="rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
-              Pro feature — unlock Pro to save and view historical months.
-            </div>
+            <>
+              <div className="rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
+                Pro feature — unlock Pro to save and view historical months.
+              </div>
+
+              <div className="mt-4 rounded-2xl bg-white/10 border border-white/10 p-4">
+                <div className="font-semibold mb-2">Unlock Pro</div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={proCode}
+                    onChange={(e) => {
+                      setProCode(e.target.value);
+                      setProError(null);
+                    }}
+                    placeholder="Enter Pro code"
+                    className="flex-1 rounded-xl bg-black/30 px-3 py-2 text-white placeholder:text-white/40"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const res = tryUnlockPro(proCode);
+
+                      if (res.ok) {
+                        setPro(true);
+                        setProError(null);
+                        setProCode("");
+                        refreshSavedMonths();
+                      } else {
+                        setPro(false);
+                        setProError(res.error);
+                      }
+                    }}
+                    className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 font-semibold text-white"
+                  >
+                    Unlock
+                  </button>
+                </div>
+
+                {proError && <div className="mt-2 text-red-300 text-sm">{proError}</div>}
+              </div>
+            </>
           ) : savedMonths.length === 0 ? (
-            <div className="text-sm text-gray-600 dark:text-white/60">
-              No saved months yet.
-            </div>
+            <div className="text-sm text-gray-600 dark:text-white/60">No saved months yet.</div>
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1385,9 +1400,7 @@ export default function Home() {
                 <div className="flex items-end justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      selectedSavedMonth && renameSavedMonth(selectedSavedMonth.id)
-                    }
+                    onClick={() => selectedSavedMonth && renameSavedMonth(selectedSavedMonth.id)}
                     className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"
                   >
                     Rename
@@ -1395,12 +1408,10 @@ export default function Home() {
 
                   <button
                     type="button"
-                    onClick={() =>
-                      selectedSavedMonth && removeSavedMonth(selectedSavedMonth.id)
-                    }
+                    onClick={() => selectedSavedMonth && removeSavedMonth(selectedSavedMonth.id)}
                     className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
                   >
-                    Delete selected
+                    Delete
                   </button>
                 </div>
               </div>
@@ -1409,58 +1420,97 @@ export default function Home() {
                 <div className="mt-4 rounded-xl bg-black/10 dark:bg-black/20 p-3">
                   <div className="font-semibold mb-2">{selectedSavedMonth.label}</div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                    <StatTile k="Worked" v={selectedSavedMonth.totals?.worked ?? 0} />
-                    <StatTile
-                      k="Qualifying"
-                      v={selectedSavedMonth.totals?.qualifying ?? 0}
-                    />
-                    <StatTile k="STD" v={selectedSavedMonth.totals?.std ?? 0} />
-                    <StatTile k="OT" v={selectedSavedMonth.totals?.ot ?? 0} />
-                    <StatTile k="Holiday" v={selectedSavedMonth.totals?.hol ?? 0} />
-                    <StatTile k="LIEU" v={selectedSavedMonth.totals?.lieu ?? 0} />
-                    <StatTile k="BH" v={selectedSavedMonth.totals?.bankHol ?? 0} />
-                    <StatTile k="Double" v={selectedSavedMonth.totals?.dbl ?? 0} />
-                    <StatTile k="Late" v={selectedSavedMonth.totals?.late ?? 0} />
-                    <StatTile k="Night" v={selectedSavedMonth.totals?.night ?? 0} />
-                    <StatTile
-                      k="Total pay"
-                      v={fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+                    <div>
+                      Worked: <b>{selectedSavedMonth.totals?.worked ?? 0}</b>
+                    </div>
+                    <div>
+                      Qualifying: <b>{selectedSavedMonth.totals?.qualifying ?? 0}</b>
+                    </div>
+                    <div>
+                      STD: <b>{selectedSavedMonth.totals?.std ?? 0}</b>
+                    </div>
+                    <div>
+                      OT: <b>{selectedSavedMonth.totals?.ot ?? 0}</b>
+                    </div>
+                    <div>
+                      Holiday: <b>{selectedSavedMonth.totals?.hol ?? 0}</b>
+                    </div>
+                    <div>
+                      LIEU: <b>{selectedSavedMonth.totals?.lieu ?? 0}</b>
+                    </div>
+                    <div>
+                      BH: <b>{selectedSavedMonth.totals?.bankHol ?? 0}</b>
+                    </div>
+                    <div>
+                      Double: <b>{selectedSavedMonth.totals?.dbl ?? 0}</b>
+                    </div>
+                    <div>
+                      Late: <b>{selectedSavedMonth.totals?.late ?? 0}</b>
+                    </div>
+                    <div>
+                      Night: <b>{selectedSavedMonth.totals?.night ?? 0}</b>
+                    </div>
+                    <div>
+                      Total pay: <b>{fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}</b>
+                    </div>
                   </div>
                 </div>
               )}
             </>
           )}
         </div>
-      </main>
+      )}
 
-      {/* Sticky bottom bar (running totals) */}
-      <div className="fixed bottom-0 left-0 right-0 z-50">
-        <div className="mx-auto max-w-4xl px-6 pb-4">
-          <div className="rounded-2xl border border-white/10 bg-black/70 backdrop-blur-md text-white shadow-lg">
-            <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-sm font-semibold">Running totals</div>
+      {/* Bottom sticky nav */}
+      <div className="fixed left-0 right-0 bottom-0 z-50">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)]">
+          <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/90 dark:bg-black/60 backdrop-blur p-2 shadow-lg">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "shift")}
+                onClick={() => setActiveTab("shift")}
+              >
+                Shift
+              </button>
 
-              <div className="flex items-center gap-3 text-sm">
-                <div className="opacity-80">Worked:</div>
-                <div className="font-semibold">{month.worked}</div>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "shifts")}
+                onClick={() => setActiveTab("shifts")}
+              >
+                Shifts
+              </button>
 
-                <div className="opacity-80">OT:</div>
-                <div className="font-semibold">{month.ot}</div>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "week")}
+                onClick={() => setActiveTab("week")}
+              >
+                Week
+              </button>
 
-                <div className="opacity-80">Late/Night:</div>
-                <div className="font-semibold">
-                  {month.late}/{month.night}
-                </div>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "month")}
+                onClick={() => setActiveTab("month")}
+              >
+                Month
+              </button>
 
-                <div className="opacity-80">Total:</div>
-                <div className="font-bold">{fmtGBP(month.totalPay)}</div>
-              </div>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "history", !pro)}
+                onClick={() => setActiveTab("history")}
+                title={!pro ? "Pro feature" : "History"}
+              >
+                {pro ? "History" : "History 🔒"}
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </>
+    </main>
   );
 }
