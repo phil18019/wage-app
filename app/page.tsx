@@ -12,7 +12,7 @@ export default function Landing() {
         />
 
         <div className="perspective">
-          <h1 className="animate-flip-y">PayCore</h1>
+         
         </div>
 
         <p className="mt-2 text-gray-600 dark:text-white/70">
