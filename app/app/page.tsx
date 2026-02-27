@@ -504,7 +504,8 @@ export default function Home() {
     bankHolFlag,
     doubleFlag,
   ]);
-
+const sickConflict =
+  Number(sickHours) > 0 && (startTime !== "" || endTime !== "");
   const month = useMemo(
     () => computeMonthTotals(rows as any, settings),
     [rows, settings]
@@ -936,6 +937,18 @@ export default function Home() {
               onChange={(e) => setEndTime(e.target.value)}
             />
           </div>
+          <div className="col-span-2">
+  <button
+    type="button"
+    onClick={() => {
+      setStartTime("");
+      setEndTime("");
+    }}
+    className="mt-2 w-full text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15"
+  >
+    Clear start / finish times
+  </button>
+</div>
 
           <div>
             <div className={label}>Holiday</div>
@@ -1011,6 +1024,11 @@ export default function Home() {
               placeholder="0"
               inputMode="decimal"
             />
+            {sickConflict && (
+        <div className="mt-2 rounded-xl bg-red-100 text-red-800 px-3 py-2 text-sm font-medium">
+        Start & finish times must be removed when sick hours are entered
+       </div>
+       )}
           </div>
         </div>
 
