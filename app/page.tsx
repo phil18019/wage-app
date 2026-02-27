@@ -44,14 +44,19 @@ export default function Landing() {
       </div>
 
       {/* Footer link (now forced underneath) */}
-      <div className="mt-10 text-center">
-        <Link href="/privacy" className="text-xs opacity-70 hover:opacity-100">
-          Privacy Policy
-        </Link>
-        <Link href="/terms" className="underline text-sm opacity-70 hover:opacity-100">
-        Terms & Conditions
-       </Link>
-      </div>
+     <div className="mt-10 flex flex-col items-center gap-2 text-xs text-gray-500 dark:text-white/60">
+  <Link href="/privacy" className="hover:opacity-100">
+    Privacy Policy
+  </Link>
+
+  <Link href="/terms" className="hover:opacity-100">
+    Terms & Conditions
+  </Link>
+
+  <div className="mt-2 text-[11px] opacity-70">
+    ©️ {new Date().getFullYear()} PayCore
+  </div>
+</div>
     </main>
   );
 }
