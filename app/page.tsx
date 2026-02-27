@@ -2,22 +2,23 @@ import Link from "next/link";
 
 export default function Landing() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6">
+    <main className="min-h-screen flex flex-col items-center px-6 pt-4 sm:pt-10 pb-12">
       {/* Main content */}
       <div className="w-full max-w-xl text-center">
         <img
           src="/icon-512.png"
           alt="PayCore"
-          className="mx-auto h-44 w-44 sm:h-56 sm:w-56 rounded-3xl shadow-lg"
+          className="mx-auto h-44 w-44 sm:h-56 sm:w-56 rounded-3xl shadow-lg mb-6"
+
         />
 
         <div className="perspective">
          
         </div>
 
-        <p className="mt-2 text-gray-600 dark:text-white/70">
-          Take control of your pay. Every hour. Every premium. Every time.
-        </p>
+        <p className="text-gray-600 text-center max-w-md mt-2 mb-6">
+       Take control of your pay. Every hour. Every premium. Every time.
+      </p>
 
         <div className="mt-8 grid gap-3 text-left text-sm">
           <div className="rounded-2xl bg-black/5 dark:bg-white/10 p-4">
