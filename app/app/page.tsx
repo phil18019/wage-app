@@ -7,6 +7,7 @@ import { computeWorkedHours } from "../lib/engine/time";
 import { fmtGBP } from "../lib/engine/money";
 import { computeMonthTotals } from "../lib/engine/month";
 import { computeWeeklyTotals } from "../lib/engine/week";
+import { computePremiumHours, getPremiumWindows } from "../lib/engine/premiums";
 import { isProEnabled, tryUnlockPro } from "../lib/pro";
 import {
   listSavedMonths,
@@ -75,39 +76,7 @@ function csvEscape(v: unknown) {
 
 /* ------------------------- premiums helpers ------------------------- */
 
-function computeLateNightHours(startTime: string, endTime: string) {
-  const s0 = toMinutes(startTime);
-  const e0 = toMinutes(endTime);
-  if (!Number.isFinite(s0) || !Number.isFinite(e0)) {
-    return { lateHours: 0, nightHours: 0 };
-  }
 
-  let s = s0;
-  let e = e0;
-  if (e <= s) e += 24 * 60;
-
-  const overlap = (sA: number, eA: number, sB: number, eB: number) =>
-    Math.max(0, Math.min(eA, eB) - Math.max(sA, sB));
-
-  let lateMin = 0;
-  let nightMin = 0;
-
-  for (const dayOffset of [-1, 0, 1]) {
-    const base = dayOffset * 24 * 60;
-
-    // Late: 14:00–22:00
-    lateMin += overlap(s, e, base + 14 * 60, base + 22 * 60);
-
-    // Night: 22:00–06:00
-    nightMin += overlap(s, e, base + 22 * 60, base + 24 * 60);
-    nightMin += overlap(s, e, base + 24 * 60, base + 30 * 60);
-  }
-
-  return {
-    lateHours: round2(lateMin / 60),
-    nightHours: round2(nightMin / 60),
-  };
-}
 
 function addHoursToTime(startTime: string, hours: number) {
   const s = toMinutes(startTime);
@@ -165,7 +134,7 @@ function deleteAllTimeShift(id: string) {
   saveAllTimeShifts(all);
 }
 
-function exportAllTimeCSV() {
+function exportAllTimeCSV(windows: any) {
   const all = listAllTimeShifts()
     .slice()
     .sort((a, b) => {
@@ -201,7 +170,7 @@ function exportAllTimeCSV() {
     const worked = clampNonNeg(
       computeWorkedHours(r.startTime || "", r.endTime || "")
     );
-    const b = computeRowBreakdown(r);
+    const b = computeRowBreakdown(r, windows);
 
     const cells = [
       csvEscape(r.id),
@@ -241,8 +210,7 @@ function isOffFullFlag(
     r.bankHolFlag === "Y"
   );
 }
-
-function computeRowBreakdown(r: ShiftRow) {
+function computeRowBreakdown(r: ShiftRow, windows: any) {
   const sh = clampNonNeg(Number(r.scheduledHours) || 0);
   const whRaw = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
   const scheduledPortion = sh > 0 ? sh : whRaw;
@@ -311,12 +279,12 @@ function computeRowBreakdown(r: ShiftRow) {
         premEnd = schedEnd;
       }
 
-      const p = computeLateNightHours(r.startTime, premEnd);
+      const p = computePremiumHours(r.startTime, premEnd, windows);
       out.late += clampNonNeg(p.lateHours);
       out.night += clampNonNeg(p.nightHours);
     } else {
       if (workedPhysical > 0) {
-        const p = computeLateNightHours(r.startTime, r.endTime);
+       const p = computePremiumHours(r.startTime, r.endTime, windows);
         out.late += clampNonNeg(p.lateHours);
         out.night += clampNonNeg(p.nightHours);
       }
@@ -409,7 +377,11 @@ export default function Home() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const weekStartsOn = settings.weekStartsOn ?? 0;
+  const premiumWindows = useMemo(() => getPremiumWindows(settings), [settings]);
 
+const premiumLabel = useMemo(() => {
+  return `Late ${premiumWindows.late.start}–${premiumWindows.late.end} • Night ${premiumWindows.night.start}–${premiumWindows.night.end}`;
+}, [premiumWindows]);
   function refreshSavedMonths() {
     setSavedMonths(listSavedMonths());
   }
@@ -496,11 +468,11 @@ export default function Home() {
       const isDouble = doubleFlag !== "";
       const premEnd =
         isDouble && sh > 0 && wh > sh && endTime ? endTime : schedEnd;
-      return computeLateNightHours(startTime, premEnd);
+     return computePremiumHours(startTime, premEnd, premiumWindows);
     }
 
     if (wh <= 0) return { lateHours: 0, nightHours: 0 };
-    return computeLateNightHours(startTime, endTime);
+    return computePremiumHours(startTime, endTime, premiumWindows);
   }, [
     startTime,
     endTime,
@@ -510,6 +482,7 @@ export default function Home() {
     lieuFlag,
     bankHolFlag,
     doubleFlag,
+    premiumWindows,
   ]);
 
   const month = useMemo(
@@ -752,7 +725,7 @@ export default function Home() {
 
     const rowsCsv = rows.map((r) => {
       const worked = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
-      const b = computeRowBreakdown(r);
+      const b = computeRowBreakdown(r, premiumWindows);
 
       const cells = [
         csvEscape(r.date),
@@ -1015,8 +988,8 @@ export default function Home() {
                 {prem.lateHours} / {prem.nightHours}
               </div>
               <div className="text-xs text-gray-600 dark:text-white/50 mt-1">
-                Late window 14:00–22:00 • Night window 22:00–06:00
-              </div>
+          {premiumLabel}
+         </div>
             </div>
           </div>
 
@@ -1201,7 +1174,7 @@ export default function Home() {
 
               <button
                 className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
-                onClick={exportAllTimeCSV}
+                onClick={() => exportAllTimeCSV(premiumWindows)}
                 title="Exports every shift you've ever saved (even across cleared months)"
               >
                 Export ALL shifts

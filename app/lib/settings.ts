@@ -10,6 +10,13 @@ export type RateSnapshot = {
   doubleRate: number;
 };
 
+export type PremiumMode = "preset" | "custom";
+
+export type PremiumWindows = {
+  late: { start: string; end: string };
+  night: { start: string; end: string };
+};
+
 export type Settings = {
   // manual (NOT stored in history)
   holidayRate: number;
@@ -17,8 +24,13 @@ export type Settings = {
   // other settings
   weekStartsOn: number; // 0=Sun … 6=Sat
 
-  // rate history (Option 2)
+  // rate history
   rates: RateSnapshot[];
+
+  // Premium windows (Late/Night)
+  premiumMode: PremiumMode;
+  premiumPresetId: string; // e.g. "p1"
+  premiumCustomWindows?: PremiumWindows; // only meaningful when premiumMode === "custom"
 };
 
 export const SETTINGS_KEY = "wagecheck.settings.v1";
@@ -33,10 +45,19 @@ const BASE_DEFAULT_RATE: RateSnapshot = {
   doubleRate: 2,
 };
 
+const DEFAULT_CUSTOM_WINDOWS: PremiumWindows = {
+  late: { start: "14:00", end: "22:00" },
+  night: { start: "22:00", end: "06:00" },
+};
+
 export const DEFAULT_SETTINGS: Settings = {
   holidayRate: 0,
   weekStartsOn: 0,
   rates: [BASE_DEFAULT_RATE],
+
+  premiumMode: "preset",
+  premiumPresetId: "p1",
+  // NOTE: we do NOT store custom windows by default unless user selects "custom"
 };
 
 function safeNum(x: unknown, fallback: number) {
@@ -52,6 +73,43 @@ function clampWeekStartsOn(x: unknown, fallback: number) {
 
 function isValidYMD(s: unknown): s is string {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function isValidHHMM(s: unknown): s is string {
+  return typeof s === "string" && /^\d{2}:\d{2}$/.test(s);
+}
+
+function normalizePremiumMode(x: unknown): PremiumMode {
+  return x === "custom" ? "custom" : "preset";
+}
+
+function normalizePremiumPresetId(x: unknown): string {
+  return typeof x === "string" && x.trim() ? x.trim() : DEFAULT_SETTINGS.premiumPresetId;
+}
+
+function normalizePremiumCustomWindows(x: unknown): PremiumWindows {
+  const obj = x as any;
+
+  const lateStart = isValidHHMM(obj?.late?.start)
+    ? obj.late.start
+    : DEFAULT_CUSTOM_WINDOWS.late.start;
+
+  const lateEnd = isValidHHMM(obj?.late?.end)
+    ? obj.late.end
+    : DEFAULT_CUSTOM_WINDOWS.late.end;
+
+  const nightStart = isValidHHMM(obj?.night?.start)
+    ? obj.night.start
+    : DEFAULT_CUSTOM_WINDOWS.night.start;
+
+  const nightEnd = isValidHHMM(obj?.night?.end)
+    ? obj.night.end
+    : DEFAULT_CUSTOM_WINDOWS.night.end;
+
+  return {
+    late: { start: lateStart, end: lateEnd },
+    night: { start: nightStart, end: nightEnd },
+  };
 }
 
 function normalizeRates(rates: any[]): RateSnapshot[] {
@@ -96,7 +154,7 @@ function normalizeRates(rates: any[]): RateSnapshot[] {
  * If user has old single-values settings (baseRate, otAddOn, etc),
  * convert them into rates[] with effectiveDate "1900-01-01".
  */
-function migrateIfLegacy(parsed: any): Settings {
+function migrateIfLegacy(parsed: any): any {
   const isLegacy =
     parsed &&
     typeof parsed === "object" &&
@@ -107,7 +165,7 @@ function migrateIfLegacy(parsed: any): Settings {
       "otThreshold" in parsed ||
       "doubleRate" in parsed);
 
-  if (!isLegacy) return parsed as Settings;
+  if (!isLegacy) return parsed;
 
   const legacyRate: RateSnapshot = {
     effectiveDate: "1900-01-01",
@@ -120,9 +178,27 @@ function migrateIfLegacy(parsed: any): Settings {
   };
 
   return {
+    ...parsed,
+    rates: normalizeRates([legacyRate]),
+  };
+}
+
+function normalizeSettingsShape(parsed: any): Settings {
+  const premiumMode = normalizePremiumMode(parsed?.premiumMode);
+
+  return {
     holidayRate: safeNum(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
     weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
-    rates: normalizeRates([legacyRate]),
+    rates: normalizeRates(Array.isArray(parsed?.rates) ? parsed.rates : []),
+
+    premiumMode,
+    premiumPresetId: normalizePremiumPresetId(parsed?.premiumPresetId),
+
+    // only persist/use custom windows if in custom mode
+    premiumCustomWindows:
+      premiumMode === "custom"
+        ? normalizePremiumCustomWindows(parsed?.premiumCustomWindows)
+        : undefined,
   };
 }
 
@@ -134,11 +210,7 @@ export function getSettings(): Settings {
     const parsed0 = JSON.parse(raw);
     const parsed = migrateIfLegacy(parsed0);
 
-    return {
-      holidayRate: safeNum(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
-      weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
-      rates: normalizeRates(Array.isArray(parsed?.rates) ? parsed.rates : []),
-    };
+    return normalizeSettingsShape(parsed);
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -146,13 +218,11 @@ export function getSettings(): Settings {
 
 export function saveSettings(s: Settings) {
   try {
-    const normalized: Settings = {
-      holidayRate: safeNum(s?.holidayRate, DEFAULT_SETTINGS.holidayRate),
-      weekStartsOn: clampWeekStartsOn(s?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
-      rates: normalizeRates(Array.isArray(s?.rates) ? s.rates : []),
-    };
+    const normalized = normalizeSettingsShape(s);
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 export function restoreDefaultSettings() {

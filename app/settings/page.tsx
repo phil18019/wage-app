@@ -13,6 +13,7 @@ import {
   deleteRateChange,
   type RateSnapshot,
 } from "../lib/settings";
+import { PREMIUM_PRESETS } from "../lib/engine/premiums";
 
 const WEEKDAY_OPTIONS = [
   { value: 0, label: "Sunday" },
@@ -35,6 +36,21 @@ function todayYMD() {
 function num(x: any) {
   const n = Number(x);
   return Number.isFinite(n) ? n : 0;
+}
+function rateForDateFromSettings(settings: Settings, date: string): RateSnapshot {
+  const rates = Array.isArray(settings?.rates) ? settings.rates : [];
+  if (!rates.length) return DEFAULT_SETTINGS.rates[0];
+
+  const sorted = [...rates].sort((a, b) =>
+    a.effectiveDate < b.effectiveDate ? -1 : 1
+  );
+
+  let best = sorted[0];
+  for (const r of sorted) {
+    if (r.effectiveDate <= date) best = r;
+    else break;
+  }
+  return best;
 }
 
 export default function SettingsPage() {
@@ -70,10 +86,13 @@ export default function SettingsPage() {
     });
   }, []);
 
-  const currentRate = useMemo(() => getRateForDate(todayYMD()), [s]); // re-eval if settings saved
+  const currentRate = useMemo(
+  () => rateForDateFromSettings(s, todayYMD()),
+  [s]
+); // re-eval if settings saved
 
   const save = () => {
-    // 1) Save base settings (holiday + week start + existing rates array)
+    // 1) Save base settings (holiday + week start + premium settings + existing rates array)
     saveSettings(s);
 
     // 2) Save/Upsert a rate change at the chosen effective date
@@ -168,7 +187,9 @@ export default function SettingsPage() {
           <div className="mb-5 rounded-xl border p-3 dark:border-white/20">
             <div className="text-sm font-semibold mb-1">Current rate (today)</div>
             <div className="text-xs text-gray-600 dark:text-white/60">
-              Base £{currentRate.baseRate} • OT add-on £{currentRate.otAddOn} • Late £{currentRate.latePremium} • Night £{currentRate.nightPremium} • OT threshold {currentRate.otThreshold} • Double x{currentRate.doubleRate}
+              Base £{currentRate.baseRate} • OT add-on £{currentRate.otAddOn} • Late £
+              {currentRate.latePremium} • Night £{currentRate.nightPremium} • OT threshold{" "}
+              {currentRate.otThreshold} • Double x{currentRate.doubleRate}
             </div>
           </div>
 
@@ -204,6 +225,160 @@ export default function SettingsPage() {
               </select>
             </div>
 
+            {/* Premium windows */}
+            <div className="border-t pt-4 dark:border-white/20">
+              <div className="text-sm font-semibold">Premium windows</div>
+              <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
+                Choose which time windows count as Late / Night.
+              </p>
+
+              <div className="mt-3">
+                <label className={labelClass}>Mode</label>
+                <select
+                  className={inputClass}
+                  value={s.premiumMode}
+                  onChange={(e) => {
+                    const mode = e.target.value === "custom" ? "custom" : "preset";
+                    setS((p) => ({
+                      ...p,
+                      premiumMode: mode,
+                      premiumCustomWindows:
+                        mode === "custom"
+                          ? (p.premiumCustomWindows ?? {
+                              late: { start: "14:00", end: "22:00" },
+                              night: { start: "22:00", end: "06:00" },
+                            })
+                          : p.premiumCustomWindows,
+                    }));
+                  }}
+                >
+                  <option value="preset">Preset</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+
+              {s.premiumMode === "preset" && (
+                <div className="mt-3">
+                  <label className={labelClass}>Preset</label>
+                  <select
+                    className={inputClass}
+                    value={s.premiumPresetId}
+                    onChange={(e) => setS((p) => ({ ...p, premiumPresetId: e.target.value }))}
+                  >
+                    {PREMIUM_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {s.premiumMode === "custom" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                  <div className="rounded-xl border p-3 dark:border-white/20">
+                    <div className="text-sm font-semibold mb-2">Late window</div>
+
+                    <label className={labelClass}>Start</label>
+                    <input
+                      className={inputClass}
+                      type="time"
+                      value={s.premiumCustomWindows?.late.start ?? "14:00"}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          premiumCustomWindows: {
+                            ...(p.premiumCustomWindows ?? {
+                              late: { start: "14:00", end: "22:00" },
+                              night: { start: "22:00", end: "06:00" },
+                            }),
+                            late: {
+                              ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
+                              start: e.target.value,
+                            },
+                          },
+                        }))
+                      }
+                    />
+
+                    <label className={`${labelClass} mt-3 block`}>End</label>
+                    <input
+                      className={inputClass}
+                      type="time"
+                      value={s.premiumCustomWindows?.late.end ?? "22:00"}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          premiumCustomWindows: {
+                            ...(p.premiumCustomWindows ?? {
+                              late: { start: "14:00", end: "22:00" },
+                              night: { start: "22:00", end: "06:00" },
+                            }),
+                            late: {
+                              ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
+                              end: e.target.value,
+                            },
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="rounded-xl border p-3 dark:border-white/20">
+                    <div className="text-sm font-semibold mb-2">Night window</div>
+
+                    <label className={labelClass}>Start</label>
+                    <input
+                      className={inputClass}
+                      type="time"
+                      value={s.premiumCustomWindows?.night.start ?? "22:00"}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          premiumCustomWindows: {
+                            ...(p.premiumCustomWindows ?? {
+                              late: { start: "14:00", end: "22:00" },
+                              night: { start: "22:00", end: "06:00" },
+                            }),
+                            night: {
+                              ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
+                              start: e.target.value,
+                            },
+                          },
+                        }))
+                      }
+                    />
+
+                    <label className={`${labelClass} mt-3 block`}>End</label>
+                    <input
+                      className={inputClass}
+                      type="time"
+                      value={s.premiumCustomWindows?.night.end ?? "06:00"}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          premiumCustomWindows: {
+                            ...(p.premiumCustomWindows ?? {
+                              late: { start: "14:00", end: "22:00" },
+                              night: { start: "22:00", end: "06:00" },
+                            }),
+                            night: {
+                              ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
+                              end: e.target.value,
+                            },
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <p className="sm:col-span-2 text-xs text-gray-500 dark:text-gray-400">
+                    Windows can cross midnight (e.g. 22:00 → 06:00).
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="border-t pt-4 dark:border-white/20">
               <div className="text-sm font-semibold">Pay rate change</div>
               <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
@@ -228,7 +403,9 @@ export default function SettingsPage() {
                     type="number"
                     step="0.01"
                     value={rateDraft.baseRate}
-                    onChange={(e) => setRateDraft((p) => ({ ...p, baseRate: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setRateDraft((p) => ({ ...p, baseRate: Number(e.target.value) }))
+                    }
                   />
                 </div>
 
@@ -239,7 +416,9 @@ export default function SettingsPage() {
                     type="number"
                     step="1"
                     value={rateDraft.otThreshold}
-                    onChange={(e) => setRateDraft((p) => ({ ...p, otThreshold: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setRateDraft((p) => ({ ...p, otThreshold: Number(e.target.value) }))
+                    }
                   />
                 </div>
 
@@ -250,7 +429,9 @@ export default function SettingsPage() {
                     type="number"
                     step="0.01"
                     value={rateDraft.otAddOn}
-                    onChange={(e) => setRateDraft((p) => ({ ...p, otAddOn: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setRateDraft((p) => ({ ...p, otAddOn: Number(e.target.value) }))
+                    }
                   />
                 </div>
 
@@ -261,7 +442,9 @@ export default function SettingsPage() {
                     type="number"
                     step="0.01"
                     value={rateDraft.latePremium}
-                    onChange={(e) => setRateDraft((p) => ({ ...p, latePremium: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setRateDraft((p) => ({ ...p, latePremium: Number(e.target.value) }))
+                    }
                   />
                 </div>
 
@@ -272,7 +455,9 @@ export default function SettingsPage() {
                     type="number"
                     step="0.01"
                     value={rateDraft.nightPremium}
-                    onChange={(e) => setRateDraft((p) => ({ ...p, nightPremium: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setRateDraft((p) => ({ ...p, nightPremium: Number(e.target.value) }))
+                    }
                   />
                 </div>
 
@@ -283,7 +468,9 @@ export default function SettingsPage() {
                     type="number"
                     step="0.01"
                     value={rateDraft.doubleRate}
-                    onChange={(e) => setRateDraft((p) => ({ ...p, doubleRate: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setRateDraft((p) => ({ ...p, doubleRate: Number(e.target.value) }))
+                    }
                   />
                 </div>
               </div>
@@ -308,7 +495,8 @@ export default function SettingsPage() {
                         <div>
                           <div className="text-sm font-semibold">{r.effectiveDate}</div>
                           <div className="text-xs text-gray-600 dark:text-white/60">
-                            Base £{r.baseRate} • OT+ £{r.otAddOn} • Late £{r.latePremium} • Night £{r.nightPremium} • Thr {r.otThreshold} • Double x{r.doubleRate}
+                            Base £{r.baseRate} • OT+ £{r.otAddOn} • Late £{r.latePremium} • Night £
+                            {r.nightPremium} • Thr {r.otThreshold} • Double x{r.doubleRate}
                           </div>
                         </div>
 
@@ -365,16 +553,16 @@ export default function SettingsPage() {
           Saved locally on this device only.
         </p>
       </div>
+
       <div className="mt-8 border-t pt-4 text-xs text-center text-gray-500 dark:text-gray-400 space-y-2">
+        <Link href="/privacy?from=settings" className="block hover:underline">
+          Privacy Policy
+        </Link>
 
- <Link href="/privacy?from=settings" className="block hover:underline">
-  Privacy Policy
-</Link>
-
-<Link href="/terms?from=settings" className="block hover:underline">
-  Terms & Conditions
-</Link>
-</div>
+        <Link href="/terms?from=settings" className="block hover:underline">
+          Terms & Conditions
+        </Link>
+      </div>
     </main>
   );
 }

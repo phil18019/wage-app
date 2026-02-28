@@ -1,6 +1,7 @@
 // app/lib/engine/week.ts
 import type { Settings } from "../settings";
 import { getRateForDate } from "../settings";
+import { computePremiumHours, getPremiumWindows } from "./premiums";
 
 export type Flag = "" | "Y" | "P";
 
@@ -120,43 +121,10 @@ function computeWorkedHours(startTime?: string, endTime?: string) {
   return round2(minutes / 60);
 }
 
-function computeLateNightHours(startTime?: string, endTime?: string) {
-  const s0 = toMinutes(startTime || "");
-  const e0 = toMinutes(endTime || "");
-  if (!Number.isFinite(s0) || !Number.isFinite(e0))
-    return { lateHours: 0, nightHours: 0 };
-
-  let s = s0;
-  let e = e0;
-  if (e <= s) e += 24 * 60;
-
-  const overlap = (sA: number, eA: number, sB: number, eB: number) =>
-    Math.max(0, Math.min(eA, eB) - Math.max(sA, sB));
-
-  let lateMin = 0;
-  let nightMin = 0;
-
-  for (const dayOffset of [-1, 0, 1]) {
-    const base = dayOffset * 24 * 60;
-
-    // Late: 14:00–22:00
-    lateMin += overlap(s, e, base + 14 * 60, base + 22 * 60);
-
-    // Night: 22:00–06:00 (two segments)
-    nightMin += overlap(s, e, base + 22 * 60, base + 24 * 60);
-    nightMin += overlap(s, e, base + 24 * 60, base + 30 * 60);
-  }
-
-  return {
-    lateHours: round2(lateMin / 60),
-    nightHours: round2(nightMin / 60),
-  };
-}
-
 /**
  * Same breakdown rules you use in month.ts
  */
-function computeRowBreakdown(r: ShiftRow) {
+function computeRowBreakdown(r: ShiftRow, settings: Settings) {
   const sh = clampNonNeg(Number(r.scheduledHours) || 0);
   const whRaw = clampNonNeg(computeWorkedHours(r.startTime ?? "", r.endTime ?? ""));
   const baseShift = sh > 0 ? sh : whRaw;
@@ -231,7 +199,7 @@ function computeRowBreakdown(r: ShiftRow) {
     }
   }
 
-  // Premiums
+  // ✅ Premiums (now configurable via settings)
   const premiumsBlocked = fullHol || fullUnpaid; // ONLY full hol/unpaid
 
   if (!premiumsBlocked && baseShift > 0 && r.startTime) {
@@ -269,7 +237,8 @@ function computeRowBreakdown(r: ShiftRow) {
           : "";
     }
 
-    const p = computeLateNightHours(r.startTime, premEnd);
+    const windows = getPremiumWindows(settings);
+    const p = computePremiumHours(r.startTime, premEnd, windows);
 
     const premiumsProtected = hasLieuOrBH || hasDouble;
 
@@ -367,7 +336,7 @@ export function computeWeeklyTotals(
     let otSoFar = 0;
 
     for (const r of weekRows) {
-      const b = computeRowBreakdown(r);
+      const b = computeRowBreakdown(r, settings);
 
       // hour buckets
       tot.worked += b.worked;
