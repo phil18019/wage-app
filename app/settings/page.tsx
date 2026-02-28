@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DEFAULT_SETTINGS,
@@ -37,6 +37,11 @@ function num(x: any) {
   const n = Number(x);
   return Number.isFinite(n) ? n : 0;
 }
+
+function round2(n: number) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 function rateForDateFromSettings(settings: Settings, date: string): RateSnapshot {
   const rates = Array.isArray(settings?.rates) ? settings.rates : [];
   if (!rates.length) return DEFAULT_SETTINGS.rates[0];
@@ -58,6 +63,9 @@ export default function SettingsPage() {
 
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
   const [msg, setMsg] = useState("");
+
+  // Prevent accidental double-taps on mobile
+  const savingRef = useRef(false);
 
   // Pay-change editor
   const [effectiveDate, setEffectiveDate] = useState<string>(todayYMD());
@@ -86,31 +94,62 @@ export default function SettingsPage() {
     });
   }, []);
 
-  const currentRate = useMemo(
-  () => rateForDateFromSettings(s, todayYMD()),
-  [s]
-); // re-eval if settings saved
+  const currentRate = useMemo(() => rateForDateFromSettings(s, todayYMD()), [s]);
 
   const save = () => {
-    // 1) Save base settings (holiday + week start + premium settings + existing rates array)
-    saveSettings(s);
+    if (savingRef.current) return;
+    savingRef.current = true;
 
-    // 2) Save/Upsert a rate change at the chosen effective date
-    addOrUpdateRateChange(effectiveDate, {
-      baseRate: num(rateDraft.baseRate),
-      otAddOn: num(rateDraft.otAddOn),
-      latePremium: num(rateDraft.latePremium),
-      nightPremium: num(rateDraft.nightPremium),
-      otThreshold: num(rateDraft.otThreshold),
-      doubleRate: num(rateDraft.doubleRate),
-    });
+    try {
+      // Compare against what is already saved for that effective date.
+      const existingForEff = rateForDateFromSettings(s, effectiveDate);
 
-    // 3) Reload (so UI reflects normalization + sorting)
-    const reloaded = getSettings();
-    setS(reloaded);
+      const nextDraft = {
+        baseRate: round2(num(rateDraft.baseRate)),
+        otAddOn: round2(num(rateDraft.otAddOn)),
+        latePremium: round2(num(rateDraft.latePremium)),
+        nightPremium: round2(num(rateDraft.nightPremium)),
+        otThreshold: num(rateDraft.otThreshold),
+        doubleRate: round2(num(rateDraft.doubleRate)),
+      };
 
-    setMsg("Saved ✅");
-    setTimeout(() => setMsg(""), 1200);
+      const existingNorm = {
+        baseRate: round2(num(existingForEff.baseRate)),
+        otAddOn: round2(num(existingForEff.otAddOn)),
+        latePremium: round2(num(existingForEff.latePremium)),
+        nightPremium: round2(num(existingForEff.nightPremium)),
+        otThreshold: num(existingForEff.otThreshold),
+        doubleRate: round2(num(existingForEff.doubleRate)),
+      };
+
+      const rateChanged =
+        nextDraft.baseRate !== existingNorm.baseRate ||
+        nextDraft.otAddOn !== existingNorm.otAddOn ||
+        nextDraft.latePremium !== existingNorm.latePremium ||
+        nextDraft.nightPremium !== existingNorm.nightPremium ||
+        nextDraft.otThreshold !== existingNorm.otThreshold ||
+        nextDraft.doubleRate !== existingNorm.doubleRate;
+
+      // 1) Always save base settings (holiday + week start + premium settings + existing rates array)
+      saveSettings(s);
+
+      // 2) Only upsert rate history if something actually changed
+      if (rateChanged) {
+        addOrUpdateRateChange(effectiveDate, nextDraft);
+      }
+
+      // 3) Reload (so UI reflects normalization + sorting)
+      const reloaded = getSettings();
+      setS(reloaded);
+
+      setMsg(rateChanged ? "Saved ✅" : "Saved ✅ (no rate change)");
+      setTimeout(() => setMsg(""), 1200);
+    } finally {
+      // small delay helps prevent ultra-fast double tap on iOS
+      setTimeout(() => {
+        savingRef.current = false;
+      }, 250);
+    }
   };
 
   const restore = () => {

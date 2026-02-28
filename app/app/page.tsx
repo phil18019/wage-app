@@ -1435,55 +1435,56 @@ const premiumLabel = useMemo(() => {
         </div>
       )}
 
-      {/* Bottom sticky nav */}
-      <div className="fixed left-0 right-0 bottom-0 z-50">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)]">
-          <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/90 dark:bg-black/60 backdrop-blur p-2 shadow-lg">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "shift")}
-                onClick={() => setActiveTab("shift")}
-              >
-                Shift
-              </button>
+     {/* Bottom sticky nav */}
+<div className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none">
+  <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)] pointer-events-none">
+    {/* Only this card + its buttons should receive taps */}
+    <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/90 dark:bg-black/60 backdrop-blur p-2 shadow-lg pointer-events-auto">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={tabButtonClass(activeTab === "shift")}
+          onClick={() => setActiveTab("shift")}
+        >
+          Shift
+        </button>
 
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "shifts")}
-                onClick={() => setActiveTab("shifts")}
-              >
-                Shifts
-              </button>
+        <button
+          type="button"
+          className={tabButtonClass(activeTab === "shifts")}
+          onClick={() => setActiveTab("shifts")}
+        >
+          Shifts
+        </button>
 
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "week")}
-                onClick={() => setActiveTab("week")}
-              >
-                Week
-              </button>
+        <button
+          type="button"
+          className={tabButtonClass(activeTab === "week")}
+          onClick={() => setActiveTab("week")}
+        >
+          Week
+        </button>
 
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "month")}
-                onClick={() => setActiveTab("month")}
-              >
-                Month
-              </button>
+        <button
+          type="button"
+          className={tabButtonClass(activeTab === "month")}
+          onClick={() => setActiveTab("month")}
+        >
+          Month
+        </button>
 
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "history", !pro)}
-                onClick={() => setActiveTab("history")}
-                title={!pro ? "Pro feature" : "History"}
-              >
-                {pro ? "History" : "History 🔒"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <button
+          type="button"
+          className={tabButtonClass(activeTab === "history", !pro)}
+          onClick={() => setActiveTab("history")}
+          title={!pro ? "Pro feature" : "History"}
+        >
+          {pro ? "History" : "History 🔒"}
+        </button>
       </div>
-    </main>
+    </div>
+  </div>
+</div>
+ </main>
   );
 }
