@@ -1,14 +1,20 @@
 import BackButton from "../components/BackButton";
 
-export default function Privacy() {
+export default function Privacy({
+  searchParams,
+}: {
+  searchParams?: { from?: string };
+}) {
+  const from = searchParams?.from;
+  const backTo = from === "landing" ? "/" : from === "settings" ? "/settings" : "/app";
+
   return (
     <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6 text-sm">
-        <BackButton />
-      
+      <BackButton to={backTo} />
 
       <h1 className="text-2xl font-bold">Privacy Policy</h1>
-
       <p>Last updated: {new Date().getFullYear()}</p>
+
 
       <p>
         PayCore is designed to respect and protect your privacy. This

@@ -1,10 +1,19 @@
 import BackButton from "../components/BackButton";
-export default function TermsPage() {
+
+export default function Terms({
+  searchParams,
+}: {
+  searchParams?: { from?: string };
+}) {
+  const from = searchParams?.from;
+  const backTo = from === "landing" ? "/" : from === "settings" ? "/settings" : "/app";
+
   return (
-    <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6">
-      
-      <BackButton />
+    <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6 text-sm">
+      <BackButton to={backTo} />
+
       <h1 className="text-2xl font-bold">Terms & Conditions</h1>
+
 
       <p className="text-sm text-gray-600 dark:text-white/60">
         Last updated: {new Date().toLocaleDateString()}
