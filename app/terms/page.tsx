@@ -1,18 +1,27 @@
 import BackButton from "../components/BackButton";
 
-export default function Terms({
+type SearchParams = {
+  from?: string | string[];
+};
+
+export default async function Terms({
   searchParams,
 }: {
-  searchParams?: { from?: string };
+  searchParams?: Promise<SearchParams>;
 }) {
-  const from = searchParams?.from;
-  const backTo = from === "landing" ? "/" : from === "settings" ? "/settings" : "/app";
+  const sp = (await searchParams) ?? {};
+  const fromRaw = sp.from;
+  const from = Array.isArray(fromRaw) ? fromRaw[0] : fromRaw;
+
+  const backTo =
+    from === "landing" ? "/" : from === "settings" ? "/settings" : "/app";
 
   return (
     <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6 text-sm">
       <BackButton to={backTo} />
 
-      <h1 className="text-2xl font-bold">Terms & Conditions</h1>
+      <h1 className="text-2xl font-bold">Terms &amp; Conditions</h1>
+
 
 
       <p className="text-sm text-gray-600 dark:text-white/60">

@@ -1,19 +1,29 @@
 import BackButton from "../components/BackButton";
 
-export default function Privacy({
+type SearchParams = {
+  from?: string | string[];
+};
+
+export default async function Privacy({
   searchParams,
 }: {
-  searchParams?: { from?: string };
+  searchParams?: Promise<SearchParams>;
 }) {
-  const from = searchParams?.from;
-  const backTo = from === "landing" ? "/" : from === "settings" ? "/settings" : "/app";
+  const sp = (await searchParams) ?? {};
+  const fromRaw = sp.from;
+  const from = Array.isArray(fromRaw) ? fromRaw[0] : fromRaw;
+
+  const backTo =
+    from === "landing" ? "/" : from === "settings" ? "/settings" : "/app";
 
   return (
     <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6 text-sm">
       <BackButton to={backTo} />
 
       <h1 className="text-2xl font-bold">Privacy Policy</h1>
+
       <p>Last updated: {new Date().getFullYear()}</p>
+
 
 
       <p>
