@@ -1,30 +1,26 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 export default function BackButton() {
   const router = useRouter();
-  const sp = useSearchParams();
+  const params = useSearchParams();
 
-  const from = sp.get("from"); // "landing" | "settings" | null
+  const from = params.get("from");
 
-  const href =
-    from === "settings" ? "/settings" :
-    from === "landing" ? "/" :
-    "/app"; // fallback
-
-  const label =
-    from === "settings" ? "← Back to Settings" :
-    from === "landing" ? "← Back to Home" :
-    "← Back";
+  const target =
+    from === "landing"
+      ? "/"
+      : from === "settings"
+      ? "/settings"
+      : "/app";
 
   return (
     <button
-      type="button"
-      onClick={() => router.push(href)}
-      className="inline-flex items-center rounded-xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm font-semibold hover:opacity-90"
+      onClick={() => router.push(target)}
+      className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 mb-4"
     >
-      {label}
+      ← Back
     </button>
   );
 }

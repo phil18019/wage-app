@@ -40,13 +40,13 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="mt-10 flex flex-col items-center gap-2 text-xs text-gray-500 dark:text-white/60">
-  <Link href="/privacy?from=landing" className="opacity-70 hover:opacity-100">
-    Privacy Policy
-  </Link>
+ <Link href="/privacy?from=landing" className="opacity-70 hover:opacity-100">
+  Privacy Policy
+</Link>
 
-  <Link href="/terms?from=landing" className="opacity-70 hover:opacity-100">
-    Terms &amp; Conditions
-  </Link>
+<Link href="/terms?from=landing" className="opacity-70 hover:opacity-100">
+  Terms & Conditions
+</Link>
 
 
         <div className="mt-2 text-[11px] opacity-70">
