@@ -76,8 +76,19 @@ export default function SettingsPage() {
   // ✅ Pro state must be loaded AFTER mount (prevents hydration mismatch)
   const [pro, setPro] = useState(false);
 
+  // ✅ One-time free pay-rate change flag (per device)
+  const RATE_HISTORY_ONETIME_KEY = "paycore.rateHistory.oneTimeUsed.v1";
+  const [oneTimeUsed, setOneTimeUsed] = useState(false);
+
   useEffect(() => {
     setPro(isProEnabled());
+
+    // load one-time flag after mount
+    try {
+      setOneTimeUsed(localStorage.getItem(RATE_HISTORY_ONETIME_KEY) === "1");
+    } catch {
+      setOneTimeUsed(false);
+    }
   }, []);
 
   // Prevent accidental double-taps on mobile
@@ -114,152 +125,149 @@ export default function SettingsPage() {
 
   const requirePro = () => alert("Pro feature 🔒");
 
-  // One-time free rate-history save (per device)
-const RATE_HISTORY_ONETIME_KEY = "paycore.rateHistory.oneTimeUsed.v1";
+  // ✅ can edit pay rates if Pro OR one-time not used yet
+  const canEditRates = pro || !oneTimeUsed;
 
-const save = () => {
-  if (savingRef.current) return;
-  savingRef.current = true;
+  const save = () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
 
-  try {
-    const nextDraft = {
-      baseRate: round2(clampNonNeg(num(rateDraft.baseRate))),
-      otAddOn: round2(clampNonNeg(num(rateDraft.otAddOn))),
-      latePremium: round2(clampNonNeg(num(rateDraft.latePremium))),
-      nightPremium: round2(clampNonNeg(num(rateDraft.nightPremium))),
-      otThreshold: clampNonNeg(num(rateDraft.otThreshold)),
-      doubleRate: round2(clampNonNeg(num(rateDraft.doubleRate))),
-    };
+    try {
+      const nextDraft = {
+        baseRate: round2(clampNonNeg(num(rateDraft.baseRate))),
+        otAddOn: round2(clampNonNeg(num(rateDraft.otAddOn))),
+        latePremium: round2(clampNonNeg(num(rateDraft.latePremium))),
+        nightPremium: round2(clampNonNeg(num(rateDraft.nightPremium))),
+        otThreshold: clampNonNeg(num(rateDraft.otThreshold)),
+        doubleRate: round2(clampNonNeg(num(rateDraft.doubleRate))),
+      };
 
-    // Prefer comparing against exact entry for effectiveDate (if it exists)
-    const exact = rateExactForDate(s, effectiveDate);
-    const baseline = exact ?? rateForDateFromSettings(s, effectiveDate);
+      // Prefer comparing against exact entry for effectiveDate (if it exists)
+      const exact = rateExactForDate(s, effectiveDate);
+      const baseline = exact ?? rateForDateFromSettings(s, effectiveDate);
 
-    const existingNorm = {
-      baseRate: round2(clampNonNeg(num(baseline.baseRate))),
-      otAddOn: round2(clampNonNeg(num(baseline.otAddOn))),
-      latePremium: round2(clampNonNeg(num(baseline.latePremium))),
-      nightPremium: round2(clampNonNeg(num(baseline.nightPremium))),
-      otThreshold: clampNonNeg(num(baseline.otThreshold)),
-      doubleRate: round2(clampNonNeg(num(baseline.doubleRate))),
-    };
+      const existingNorm = {
+        baseRate: round2(clampNonNeg(num(baseline.baseRate))),
+        otAddOn: round2(clampNonNeg(num(baseline.otAddOn))),
+        latePremium: round2(clampNonNeg(num(baseline.latePremium))),
+        nightPremium: round2(clampNonNeg(num(baseline.nightPremium))),
+        otThreshold: clampNonNeg(num(baseline.otThreshold)),
+        doubleRate: round2(clampNonNeg(num(baseline.doubleRate))),
+      };
 
-    const rateChanged =
-      nextDraft.baseRate !== existingNorm.baseRate ||
-      nextDraft.otAddOn !== existingNorm.otAddOn ||
-      nextDraft.latePremium !== existingNorm.latePremium ||
-      nextDraft.nightPremium !== existingNorm.nightPremium ||
-      nextDraft.otThreshold !== existingNorm.otThreshold ||
-      nextDraft.doubleRate !== existingNorm.doubleRate;
+      const rateChanged =
+        nextDraft.baseRate !== existingNorm.baseRate ||
+        nextDraft.otAddOn !== existingNorm.otAddOn ||
+        nextDraft.latePremium !== existingNorm.latePremium ||
+        nextDraft.nightPremium !== existingNorm.nightPremium ||
+        nextDraft.otThreshold !== existingNorm.otThreshold ||
+        nextDraft.doubleRate !== existingNorm.doubleRate;
 
-    // 1) Save base settings (always allowed)
-    saveSettings({
-      ...s,
-      holidayRate: clampNonNeg(num(s.holidayRate)),
-      holidayStartBalanceHours: clampNonNeg(num(s.holidayStartBalanceHours)),
-      protectPremiumsForLieuBH: !!s.protectPremiumsForLieuBH,
-    });
+      // 1) Save base settings (always allowed)
+      saveSettings({
+        ...s,
+        holidayRate: clampNonNeg(num(s.holidayRate)),
+        holidayStartBalanceHours: clampNonNeg(num(s.holidayStartBalanceHours)),
+        protectPremiumsForLieuBH: !!s.protectPremiumsForLieuBH,
+      });
 
-    // 2) Rate history rules:
-    //    - Pro: always allowed when changed
-    //    - Free: allowed ONCE only (per device)
-    let didSaveRateHistory = false;
+      // 2) Handle rate history save rules
+      let didSaveRateHistory = false;
 
-    if (rateChanged) {
-      if (pro) {
-        addOrUpdateRateChange(effectiveDate, nextDraft);
-        didSaveRateHistory = true;
-      } else {
-        const oneTimeUsed =
-          typeof window !== "undefined" &&
-          localStorage.getItem(RATE_HISTORY_ONETIME_KEY) === "1";
-
-        if (!oneTimeUsed) {
+      if (rateChanged) {
+        if (pro) {
           addOrUpdateRateChange(effectiveDate, nextDraft);
           didSaveRateHistory = true;
+        } else {
+          // free user: allow exactly one save
+          if (!oneTimeUsed) {
+            addOrUpdateRateChange(effectiveDate, nextDraft);
+            didSaveRateHistory = true;
 
-          if (typeof window !== "undefined") {
-            localStorage.setItem(RATE_HISTORY_ONETIME_KEY, "1");
+            try {
+              localStorage.setItem(RATE_HISTORY_ONETIME_KEY, "1");
+            } catch {
+              // ignore
+            }
+            setOneTimeUsed(true);
           }
         }
       }
-    }
 
-    // 3) Reload
+      // 3) Reload
+      const reloaded = getSettings();
+      setS(reloaded);
+
+      // Messaging
+      if (!rateChanged) {
+        setMsg("Saved ✅ (no rate change)");
+      } else if (didSaveRateHistory) {
+        setMsg(pro ? "Saved ✅" : "Saved ✅ (one-time pay rate change used)");
+      } else {
+        setMsg("Saved ✅ (Pay rate changes are Pro 🔒)");
+      }
+
+      setTimeout(() => setMsg(""), 1400);
+    } finally {
+      setTimeout(() => {
+        savingRef.current = false;
+      }, 250);
+    }
+  };
+
+  const restore = () => {
+    restoreDefaultSettings();
     const reloaded = getSettings();
     setS(reloaded);
 
-    // Messaging
-    if (!rateChanged) {
-      setMsg("Saved ✅ (no rate change)");
-    } else if (didSaveRateHistory) {
-      setMsg(pro ? "Saved ✅" : "Saved ✅ (one-time rate change used)");
-    } else {
-      setMsg("Saved ✅ (rate history is Pro 🔒)");
-    }
+    const cur = getRateForDate(todayYMD());
+    setEffectiveDate(todayYMD());
+    setRateDraft({
+      baseRate: cur.baseRate,
+      otAddOn: cur.otAddOn,
+      latePremium: cur.latePremium,
+      nightPremium: cur.nightPremium,
+      otThreshold: cur.otThreshold,
+      doubleRate: cur.doubleRate,
+    });
 
+    setMsg("Defaults restored");
     setTimeout(() => setMsg(""), 1200);
-  } finally {
-    setTimeout(() => {
-      savingRef.current = false;
-    }, 250);
-  }
-};
+  };
 
-const restore = () => {
-  restoreDefaultSettings();
-  const reloaded = getSettings();
-  setS(reloaded);
+  const removeRate = (eff: string) => {
+    if (!pro) return requirePro();
 
-  const cur = getRateForDate(todayYMD());
-  setEffectiveDate(todayYMD());
-  setRateDraft({
-    baseRate: cur.baseRate,
-    otAddOn: cur.otAddOn,
-    latePremium: cur.latePremium,
-    nightPremium: cur.nightPremium,
-    otThreshold: cur.otThreshold,
-    doubleRate: cur.doubleRate,
-  });
+    const ok = confirm(
+      `Delete rate change effective ${eff}?\n\nThis can affect pay totals for shifts on/after that date.`
+    );
+    if (!ok) return;
 
-  setMsg("Defaults restored");
-  setTimeout(() => setMsg(""), 1200);
-};
+    deleteRateChange(eff);
 
-const removeRate = (eff: string) => {
-  if (!pro) return requirePro();
+    const reloaded = getSettings();
+    setS(reloaded);
 
-  const ok = confirm(
-    `Delete rate change effective ${eff}?\n\nThis can affect pay totals for shifts on/after that date.`
-  );
-  if (!ok) return;
+    setMsg("Rate deleted");
+    setTimeout(() => setMsg(""), 1200);
+  };
 
-  deleteRateChange(eff);
+  const loadRateIntoEditor = (eff: string) => {
+    if (!pro) return requirePro();
 
-  const reloaded = getSettings();
-  setS(reloaded);
-
-  setMsg("Rate deleted");
-  setTimeout(() => setMsg(""), 1200);
-};
-
-const loadRateIntoEditor = (eff: string) => {
-  if (!pro) return requirePro();
-
-  const r = getRateForDate(eff);
-  setEffectiveDate(eff);
-  setRateDraft({
-    baseRate: r.baseRate,
-    otAddOn: r.otAddOn,
-    latePremium: r.latePremium,
-    nightPremium: r.nightPremium,
-    otThreshold: r.otThreshold,
-    doubleRate: r.doubleRate,
-  });
-  setMsg(`Loaded ${eff}`);
-  setTimeout(() => setMsg(""), 1200);
-};
-
+    const r = getRateForDate(eff);
+    setEffectiveDate(eff);
+    setRateDraft({
+      baseRate: r.baseRate,
+      otAddOn: r.otAddOn,
+      latePremium: r.latePremium,
+      nightPremium: r.nightPremium,
+      otThreshold: r.otThreshold,
+      doubleRate: r.doubleRate,
+    });
+    setMsg(`Loaded ${eff}`);
+    setTimeout(() => setMsg(""), 1200);
+  };
 
   const inputClass =
     "mt-2 w-full rounded-xl border px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100 dark:border-white/20";
@@ -287,6 +295,19 @@ const loadRateIntoEditor = (eff: string) => {
             </div>
           )}
 
+          {/* ✅ one-time notice */}
+          {!pro && !oneTimeUsed && (
+            <div className="mb-4 rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200">
+              You can make <b>one</b> pay rate change for free. After that, pay rate changes require Pro 🔒
+            </div>
+          )}
+
+          {!pro && oneTimeUsed && (
+            <div className="mb-4 rounded-xl border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-900 dark:border-yellow-500/40 dark:bg-yellow-500/10 dark:text-yellow-200">
+              Your free pay rate change has been used. Further pay rate changes require Pro 🔒
+            </div>
+          )}
+
           {/* Current rate (read-only helper) */}
           <div className="mb-5 rounded-xl border p-3 dark:border-white/20">
             <div className="text-sm font-semibold mb-1">Current rate (today)</div>
@@ -306,9 +327,7 @@ const loadRateIntoEditor = (eff: string) => {
                 type="number"
                 step="0.01"
                 value={s.holidayRate}
-                onChange={(e) =>
-                  setS((p) => ({ ...p, holidayRate: Number(e.target.value) }))
-                }
+                onChange={(e) => setS((p) => ({ ...p, holidayRate: Number(e.target.value) }))}
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Holiday rate can vary — update when needed (not stored in history).
@@ -321,9 +340,7 @@ const loadRateIntoEditor = (eff: string) => {
               <select
                 className={inputClass}
                 value={s.weekStartsOn}
-                onChange={(e) =>
-                  setS((p) => ({ ...p, weekStartsOn: Number(e.target.value) }))
-                }
+                onChange={(e) => setS((p) => ({ ...p, weekStartsOn: Number(e.target.value) }))}
               >
                 {WEEKDAY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -342,10 +359,7 @@ const loadRateIntoEditor = (eff: string) => {
                 Enter your balance as at a date. The app will deduct any Holiday shifts after that date (and within the tax year).
               </p>
 
-              <div
-                className={!pro ? "opacity-60" : ""}
-                onClick={!pro ? requirePro : undefined}
-              >
+              <div className={!pro ? "opacity-60" : ""} onClick={!pro ? requirePro : undefined}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                   <div>
                     <label className={labelClass}>Starting balance (hours)</label>
@@ -356,10 +370,7 @@ const loadRateIntoEditor = (eff: string) => {
                       disabled={!pro}
                       value={s.holidayStartBalanceHours ?? 0}
                       onChange={(e) =>
-                        setS((p) => ({
-                          ...p,
-                          holidayStartBalanceHours: Number(e.target.value),
-                        }))
+                        setS((p) => ({ ...p, holidayStartBalanceHours: Number(e.target.value) }))
                       }
                     />
                   </div>
@@ -372,10 +383,7 @@ const loadRateIntoEditor = (eff: string) => {
                       disabled={!pro}
                       value={s.holidayBalanceStartDateYMD ?? ""}
                       onChange={(e) =>
-                        setS((p) => ({
-                          ...p,
-                          holidayBalanceStartDateYMD: e.target.value,
-                        }))
+                        setS((p) => ({ ...p, holidayBalanceStartDateYMD: e.target.value }))
                       }
                     />
                   </div>
@@ -449,12 +457,7 @@ const loadRateIntoEditor = (eff: string) => {
                     className="mt-1 h-4 w-4"
                     disabled={!pro}
                     checked={!!s.protectPremiumsForLieuBH}
-                    onChange={(e) =>
-                      setS((p) => ({
-                        ...p,
-                        protectPremiumsForLieuBH: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setS((p) => ({ ...p, protectPremiumsForLieuBH: e.target.checked }))}
                   />
                   <span>
                     <div className="text-sm font-semibold">
@@ -505,9 +508,7 @@ const loadRateIntoEditor = (eff: string) => {
                   <select
                     className={inputClass}
                     value={s.premiumPresetId}
-                    onChange={(e) =>
-                      setS((p) => ({ ...p, premiumPresetId: e.target.value }))
-                    }
+                    onChange={(e) => setS((p) => ({ ...p, premiumPresetId: e.target.value }))}
                   >
                     {PREMIUM_PRESETS.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -519,10 +520,7 @@ const loadRateIntoEditor = (eff: string) => {
               )}
 
               {s.premiumMode === "custom" && (
-                <div
-                  className={!pro ? "opacity-60" : ""}
-                  onClick={!pro ? requirePro : undefined}
-                >
+                <div className={!pro ? "opacity-60" : ""} onClick={!pro ? requirePro : undefined}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                     <div className="rounded-xl border p-3 dark:border-white/20">
                       <div className="text-sm font-semibold mb-2">
@@ -544,10 +542,7 @@ const loadRateIntoEditor = (eff: string) => {
                                 night: { start: "22:00", end: "06:00" },
                               }),
                               late: {
-                                ...(p.premiumCustomWindows?.late ?? {
-                                  start: "14:00",
-                                  end: "22:00",
-                                }),
+                                ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
                                 start: e.target.value,
                               },
                             },
@@ -570,10 +565,7 @@ const loadRateIntoEditor = (eff: string) => {
                                 night: { start: "22:00", end: "06:00" },
                               }),
                               late: {
-                                ...(p.premiumCustomWindows?.late ?? {
-                                  start: "14:00",
-                                  end: "22:00",
-                                }),
+                                ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
                                 end: e.target.value,
                               },
                             },
@@ -602,10 +594,7 @@ const loadRateIntoEditor = (eff: string) => {
                                 night: { start: "22:00", end: "06:00" },
                               }),
                               night: {
-                                ...(p.premiumCustomWindows?.night ?? {
-                                  start: "22:00",
-                                  end: "06:00",
-                                }),
+                                ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
                                 start: e.target.value,
                               },
                             },
@@ -628,10 +617,7 @@ const loadRateIntoEditor = (eff: string) => {
                                 night: { start: "22:00", end: "06:00" },
                               }),
                               night: {
-                                ...(p.premiumCustomWindows?.night ?? {
-                                  start: "22:00",
-                                  end: "06:00",
-                                }),
+                                ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
                                 end: e.target.value,
                               },
                             },
@@ -650,11 +636,11 @@ const loadRateIntoEditor = (eff: string) => {
 
             {/* Pay rate change */}
             <div
-              className={`border-t pt-4 dark:border-white/20 ${!pro ? "opacity-60" : ""}`}
-              onClick={!pro ? requirePro : undefined}
+              className={`border-t pt-4 dark:border-white/20 ${!canEditRates ? "opacity-60" : ""}`}
+              onClick={!canEditRates ? requirePro : undefined}
             >
               <div className="text-sm font-semibold">
-                Pay rate change {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
+                Pay rate change {!canEditRates && <span className="text-xs opacity-70">(Pro 🔒)</span>}
               </div>
               <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
                 Set the date the new rate becomes effective. Past shifts keep their old rate.
@@ -665,7 +651,7 @@ const loadRateIntoEditor = (eff: string) => {
                 <input
                   className={inputClass}
                   type="date"
-                  disabled={!pro}
+                  disabled={!canEditRates}
                   value={effectiveDate}
                   onChange={(e) => setEffectiveDate(e.target.value)}
                 />
@@ -678,11 +664,9 @@ const loadRateIntoEditor = (eff: string) => {
                     className={inputClass}
                     type="number"
                     step="0.01"
-                    disabled={!pro}
+                    disabled={!canEditRates}
                     value={rateDraft.baseRate}
-                    onChange={(e) =>
-                      setRateDraft((p) => ({ ...p, baseRate: Number(e.target.value) }))
-                    }
+                    onChange={(e) => setRateDraft((p) => ({ ...p, baseRate: Number(e.target.value) }))}
                   />
                 </div>
 
@@ -692,11 +676,9 @@ const loadRateIntoEditor = (eff: string) => {
                     className={inputClass}
                     type="number"
                     step="1"
-                    disabled={!pro}
+                    disabled={!canEditRates}
                     value={rateDraft.otThreshold}
-                    onChange={(e) =>
-                      setRateDraft((p) => ({ ...p, otThreshold: Number(e.target.value) }))
-                    }
+                    onChange={(e) => setRateDraft((p) => ({ ...p, otThreshold: Number(e.target.value) }))}
                   />
                 </div>
 
@@ -706,11 +688,9 @@ const loadRateIntoEditor = (eff: string) => {
                     className={inputClass}
                     type="number"
                     step="0.01"
-                    disabled={!pro}
+                    disabled={!canEditRates}
                     value={rateDraft.otAddOn}
-                    onChange={(e) =>
-                      setRateDraft((p) => ({ ...p, otAddOn: Number(e.target.value) }))
-                    }
+                    onChange={(e) => setRateDraft((p) => ({ ...p, otAddOn: Number(e.target.value) }))}
                   />
                 </div>
 
@@ -720,11 +700,9 @@ const loadRateIntoEditor = (eff: string) => {
                     className={inputClass}
                     type="number"
                     step="0.01"
-                    disabled={!pro}
+                    disabled={!canEditRates}
                     value={rateDraft.latePremium}
-                    onChange={(e) =>
-                      setRateDraft((p) => ({ ...p, latePremium: Number(e.target.value) }))
-                    }
+                    onChange={(e) => setRateDraft((p) => ({ ...p, latePremium: Number(e.target.value) }))}
                   />
                 </div>
 
@@ -734,11 +712,9 @@ const loadRateIntoEditor = (eff: string) => {
                     className={inputClass}
                     type="number"
                     step="0.01"
-                    disabled={!pro}
+                    disabled={!canEditRates}
                     value={rateDraft.nightPremium}
-                    onChange={(e) =>
-                      setRateDraft((p) => ({ ...p, nightPremium: Number(e.target.value) }))
-                    }
+                    onChange={(e) => setRateDraft((p) => ({ ...p, nightPremium: Number(e.target.value) }))}
                   />
                 </div>
 
@@ -748,11 +724,9 @@ const loadRateIntoEditor = (eff: string) => {
                     className={inputClass}
                     type="number"
                     step="0.01"
-                    disabled={!pro}
+                    disabled={!canEditRates}
                     value={rateDraft.doubleRate}
-                    onChange={(e) =>
-                      setRateDraft((p) => ({ ...p, doubleRate: Number(e.target.value) }))
-                    }
+                    onChange={(e) => setRateDraft((p) => ({ ...p, doubleRate: Number(e.target.value) }))}
                   />
                 </div>
               </div>
