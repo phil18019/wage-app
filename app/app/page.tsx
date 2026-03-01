@@ -1318,12 +1318,12 @@ const prem = useMemo(() => {
               </button>
 
               <button
-                className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
-                onClick={() => exportAllTimeCSV(settings, premiumWindows)}
-                title="Exports every shift you've ever saved (even across cleared months)"
-              >
-                Export ALL shifts
-              </button>
+  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
+  onClick={() => requirePro(() => exportAllTimeCSV(settings, premiumWindows))}
+  title={!pro ? "Pro feature" : "Exports every shift you've ever saved (even across cleared months)"}
+>
+  Export ALL shifts {pro ? "" : "🔒"}
+</button>
 
               <button
                 className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"

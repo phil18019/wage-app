@@ -1,5 +1,5 @@
 "use client";
-
+import { isProEnabled } from "../lib/pro";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -73,6 +73,13 @@ export default function SettingsPage() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
   const [msg, setMsg] = useState("");
 
+  // ✅ Pro state must be loaded AFTER mount (prevents hydration mismatch)
+  const [pro, setPro] = useState(false);
+
+  useEffect(() => {
+    setPro(isProEnabled());
+  }, []);
+
   // Prevent accidental double-taps on mobile
   const savingRef = useRef(false);
 
@@ -105,117 +112,154 @@ export default function SettingsPage() {
 
   const currentRate = useMemo(() => rateForDateFromSettings(s, todayYMD()), [s]);
 
-  const save = () => {
-    if (savingRef.current) return;
-    savingRef.current = true;
+  const requirePro = () => alert("Pro feature 🔒");
 
-    try {
-      const nextDraft = {
-        baseRate: round2(clampNonNeg(num(rateDraft.baseRate))),
-        otAddOn: round2(clampNonNeg(num(rateDraft.otAddOn))),
-        latePremium: round2(clampNonNeg(num(rateDraft.latePremium))),
-        nightPremium: round2(clampNonNeg(num(rateDraft.nightPremium))),
-        otThreshold: clampNonNeg(num(rateDraft.otThreshold)),
-        doubleRate: round2(clampNonNeg(num(rateDraft.doubleRate))),
-      };
+  // One-time free rate-history save (per device)
+const RATE_HISTORY_ONETIME_KEY = "paycore.rateHistory.oneTimeUsed.v1";
 
-      // Prefer comparing against exact entry for effectiveDate (if it exists)
-      const exact = rateExactForDate(s, effectiveDate);
-      const baseline = exact ?? rateForDateFromSettings(s, effectiveDate);
+const save = () => {
+  if (savingRef.current) return;
+  savingRef.current = true;
 
-      const existingNorm = {
-        baseRate: round2(clampNonNeg(num(baseline.baseRate))),
-        otAddOn: round2(clampNonNeg(num(baseline.otAddOn))),
-        latePremium: round2(clampNonNeg(num(baseline.latePremium))),
-        nightPremium: round2(clampNonNeg(num(baseline.nightPremium))),
-        otThreshold: clampNonNeg(num(baseline.otThreshold)),
-        doubleRate: round2(clampNonNeg(num(baseline.doubleRate))),
-      };
+  try {
+    const nextDraft = {
+      baseRate: round2(clampNonNeg(num(rateDraft.baseRate))),
+      otAddOn: round2(clampNonNeg(num(rateDraft.otAddOn))),
+      latePremium: round2(clampNonNeg(num(rateDraft.latePremium))),
+      nightPremium: round2(clampNonNeg(num(rateDraft.nightPremium))),
+      otThreshold: clampNonNeg(num(rateDraft.otThreshold)),
+      doubleRate: round2(clampNonNeg(num(rateDraft.doubleRate))),
+    };
 
-      const rateChanged =
-        nextDraft.baseRate !== existingNorm.baseRate ||
-        nextDraft.otAddOn !== existingNorm.otAddOn ||
-        nextDraft.latePremium !== existingNorm.latePremium ||
-        nextDraft.nightPremium !== existingNorm.nightPremium ||
-        nextDraft.otThreshold !== existingNorm.otThreshold ||
-        nextDraft.doubleRate !== existingNorm.doubleRate;
+    // Prefer comparing against exact entry for effectiveDate (if it exists)
+    const exact = rateExactForDate(s, effectiveDate);
+    const baseline = exact ?? rateForDateFromSettings(s, effectiveDate);
 
-      // 1) Save base settings (holiday + week start + premium settings + holiday balance inputs + premiums protection toggle)
-      saveSettings({
-        ...s,
-        holidayRate: clampNonNeg(num(s.holidayRate)),
-        holidayStartBalanceHours: clampNonNeg(num(s.holidayStartBalanceHours)),
-        protectPremiumsForLieuBH: !!s.protectPremiumsForLieuBH,
-      });
+    const existingNorm = {
+      baseRate: round2(clampNonNeg(num(baseline.baseRate))),
+      otAddOn: round2(clampNonNeg(num(baseline.otAddOn))),
+      latePremium: round2(clampNonNeg(num(baseline.latePremium))),
+      nightPremium: round2(clampNonNeg(num(baseline.nightPremium))),
+      otThreshold: clampNonNeg(num(baseline.otThreshold)),
+      doubleRate: round2(clampNonNeg(num(baseline.doubleRate))),
+    };
 
-      // 2) Only upsert rate history if something actually changed
-      if (rateChanged) {
+    const rateChanged =
+      nextDraft.baseRate !== existingNorm.baseRate ||
+      nextDraft.otAddOn !== existingNorm.otAddOn ||
+      nextDraft.latePremium !== existingNorm.latePremium ||
+      nextDraft.nightPremium !== existingNorm.nightPremium ||
+      nextDraft.otThreshold !== existingNorm.otThreshold ||
+      nextDraft.doubleRate !== existingNorm.doubleRate;
+
+    // 1) Save base settings (always allowed)
+    saveSettings({
+      ...s,
+      holidayRate: clampNonNeg(num(s.holidayRate)),
+      holidayStartBalanceHours: clampNonNeg(num(s.holidayStartBalanceHours)),
+      protectPremiumsForLieuBH: !!s.protectPremiumsForLieuBH,
+    });
+
+    // 2) Rate history rules:
+    //    - Pro: always allowed when changed
+    //    - Free: allowed ONCE only (per device)
+    let didSaveRateHistory = false;
+
+    if (rateChanged) {
+      if (pro) {
         addOrUpdateRateChange(effectiveDate, nextDraft);
+        didSaveRateHistory = true;
+      } else {
+        const oneTimeUsed =
+          typeof window !== "undefined" &&
+          localStorage.getItem(RATE_HISTORY_ONETIME_KEY) === "1";
+
+        if (!oneTimeUsed) {
+          addOrUpdateRateChange(effectiveDate, nextDraft);
+          didSaveRateHistory = true;
+
+          if (typeof window !== "undefined") {
+            localStorage.setItem(RATE_HISTORY_ONETIME_KEY, "1");
+          }
+        }
       }
-
-      // 3) Reload (so UI reflects normalization + sorting)
-      const reloaded = getSettings();
-      setS(reloaded);
-
-      setMsg(rateChanged ? "Saved ✅" : "Saved ✅ (no rate change)");
-      setTimeout(() => setMsg(""), 1200);
-    } finally {
-      // small delay helps prevent ultra-fast double tap on iOS
-      setTimeout(() => {
-        savingRef.current = false;
-      }, 250);
     }
-  };
 
-  const restore = () => {
-    restoreDefaultSettings();
+    // 3) Reload
     const reloaded = getSettings();
     setS(reloaded);
 
-    const cur = getRateForDate(todayYMD());
-    setEffectiveDate(todayYMD());
-    setRateDraft({
-      baseRate: cur.baseRate,
-      otAddOn: cur.otAddOn,
-      latePremium: cur.latePremium,
-      nightPremium: cur.nightPremium,
-      otThreshold: cur.otThreshold,
-      doubleRate: cur.doubleRate,
-    });
+    // Messaging
+    if (!rateChanged) {
+      setMsg("Saved ✅ (no rate change)");
+    } else if (didSaveRateHistory) {
+      setMsg(pro ? "Saved ✅" : "Saved ✅ (one-time rate change used)");
+    } else {
+      setMsg("Saved ✅ (rate history is Pro 🔒)");
+    }
 
-    setMsg("Defaults restored");
     setTimeout(() => setMsg(""), 1200);
-  };
+  } finally {
+    setTimeout(() => {
+      savingRef.current = false;
+    }, 250);
+  }
+};
 
-  const removeRate = (eff: string) => {
-    const ok = confirm(
-      `Delete rate change effective ${eff}?\n\nThis can affect pay totals for shifts on/after that date.`
-    );
-    if (!ok) return;
+const restore = () => {
+  restoreDefaultSettings();
+  const reloaded = getSettings();
+  setS(reloaded);
 
-    deleteRateChange(eff);
+  const cur = getRateForDate(todayYMD());
+  setEffectiveDate(todayYMD());
+  setRateDraft({
+    baseRate: cur.baseRate,
+    otAddOn: cur.otAddOn,
+    latePremium: cur.latePremium,
+    nightPremium: cur.nightPremium,
+    otThreshold: cur.otThreshold,
+    doubleRate: cur.doubleRate,
+  });
 
-    const reloaded = getSettings();
-    setS(reloaded);
+  setMsg("Defaults restored");
+  setTimeout(() => setMsg(""), 1200);
+};
 
-    setMsg("Rate deleted");
-    setTimeout(() => setMsg(""), 1200);
-  };
+const removeRate = (eff: string) => {
+  if (!pro) return requirePro();
 
-  const loadRateIntoEditor = (eff: string) => {
-    const r = getRateForDate(eff);
-    setEffectiveDate(eff);
-    setRateDraft({
-      baseRate: r.baseRate,
-      otAddOn: r.otAddOn,
-      latePremium: r.latePremium,
-      nightPremium: r.nightPremium,
-      otThreshold: r.otThreshold,
-      doubleRate: r.doubleRate,
-    });
-    setMsg(`Loaded ${eff}`);
-    setTimeout(() => setMsg(""), 1200);
-  };
+  const ok = confirm(
+    `Delete rate change effective ${eff}?\n\nThis can affect pay totals for shifts on/after that date.`
+  );
+  if (!ok) return;
+
+  deleteRateChange(eff);
+
+  const reloaded = getSettings();
+  setS(reloaded);
+
+  setMsg("Rate deleted");
+  setTimeout(() => setMsg(""), 1200);
+};
+
+const loadRateIntoEditor = (eff: string) => {
+  if (!pro) return requirePro();
+
+  const r = getRateForDate(eff);
+  setEffectiveDate(eff);
+  setRateDraft({
+    baseRate: r.baseRate,
+    otAddOn: r.otAddOn,
+    latePremium: r.latePremium,
+    nightPremium: r.nightPremium,
+    otThreshold: r.otThreshold,
+    doubleRate: r.doubleRate,
+  });
+  setMsg(`Loaded ${eff}`);
+  setTimeout(() => setMsg(""), 1200);
+};
+
 
   const inputClass =
     "mt-2 w-full rounded-xl border px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100 dark:border-white/20";
@@ -236,6 +280,12 @@ export default function SettingsPage() {
             <h1 className="text-2xl font-bold">Settings</h1>
             <span className="text-sm text-green-700 dark:text-green-400">{msg}</span>
           </div>
+
+          {!pro && (
+            <div className="mb-4 rounded-xl border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-900 dark:border-yellow-500/40 dark:bg-yellow-500/10 dark:text-yellow-200">
+              Some settings are Pro-only 🔒 (Rate history, Holiday balance tools, Custom premium windows, LIEU/BH premium protection toggle).
+            </div>
+          )}
 
           {/* Current rate (read-only helper) */}
           <div className="mb-5 rounded-xl border p-3 dark:border-white/20">
@@ -285,83 +335,94 @@ export default function SettingsPage() {
 
             {/* Holiday balance */}
             <div className="border-t pt-4 dark:border-white/20">
-              <div className="text-sm font-semibold">Holiday balance</div>
+              <div className="text-sm font-semibold">
+                Holiday balance {!pro && <span className="text-xs opacity-70"> (Pro 🔒)</span>}
+              </div>
               <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
                 Enter your balance as at a date. The app will deduct any Holiday shifts after that date (and within the tax year).
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                <div>
-                  <label className={labelClass}>Starting balance (hours)</label>
-                  <input
-                    className={inputClass}
-                    type="number"
-                    step="0.01"
-                    value={s.holidayStartBalanceHours ?? 0}
-                    onChange={(e) =>
-                      setS((p) => ({
-                        ...p,
-                        holidayStartBalanceHours: Number(e.target.value),
-                      }))
-                    }
-                  />
+              <div
+                className={!pro ? "opacity-60" : ""}
+                onClick={!pro ? requirePro : undefined}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                  <div>
+                    <label className={labelClass}>Starting balance (hours)</label>
+                    <input
+                      className={inputClass}
+                      type="number"
+                      step="0.01"
+                      disabled={!pro}
+                      value={s.holidayStartBalanceHours ?? 0}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          holidayStartBalanceHours: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Balance as at (date)</label>
+                    <input
+                      className={inputClass}
+                      type="date"
+                      disabled={!pro}
+                      value={s.holidayBalanceStartDateYMD ?? ""}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          holidayBalanceStartDateYMD: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className={labelClass}>Balance as at (date)</label>
-                  <input
-                    className={inputClass}
-                    type="date"
-                    value={s.holidayBalanceStartDateYMD ?? ""}
-                    onChange={(e) =>
-                      setS((p) => ({
-                        ...p,
-                        holidayBalanceStartDateYMD: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <div>
+                    <label className={labelClass}>Tax year starts (month)</label>
+                    <input
+                      className={inputClass}
+                      type="number"
+                      min={1}
+                      max={12}
+                      disabled={!pro}
+                      value={s.holidayTaxYearStart?.month ?? 4}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          holidayTaxYearStart: {
+                            month: Number(e.target.value),
+                            day: p.holidayTaxYearStart?.day ?? 6,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <div>
-                  <label className={labelClass}>Tax year starts (month)</label>
-                  <input
-                    className={inputClass}
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={s.holidayTaxYearStart?.month ?? 4}
-                    onChange={(e) =>
-                      setS((p) => ({
-                        ...p,
-                        holidayTaxYearStart: {
-                          month: Number(e.target.value),
-                          day: p.holidayTaxYearStart?.day ?? 6,
-                        },
-                      }))
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className={labelClass}>Tax year starts (day)</label>
-                  <input
-                    className={inputClass}
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={s.holidayTaxYearStart?.day ?? 6}
-                    onChange={(e) =>
-                      setS((p) => ({
-                        ...p,
-                        holidayTaxYearStart: {
-                          month: p.holidayTaxYearStart?.month ?? 4,
-                          day: Number(e.target.value),
-                        },
-                      }))
-                    }
-                  />
+                  <div>
+                    <label className={labelClass}>Tax year starts (day)</label>
+                    <input
+                      className={inputClass}
+                      type="number"
+                      min={1}
+                      max={31}
+                      disabled={!pro}
+                      value={s.holidayTaxYearStart?.day ?? 6}
+                      onChange={(e) =>
+                        setS((p) => ({
+                          ...p,
+                          holidayTaxYearStart: {
+                            month: p.holidayTaxYearStart?.month ?? 4,
+                            day: Number(e.target.value),
+                          },
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -377,12 +438,16 @@ export default function SettingsPage() {
                 Choose which time windows count as Late / Night.
               </p>
 
-              {/* ✅ NEW: LIEU/BH protection toggle */}
-              <div className="mt-3 rounded-xl border p-3 dark:border-white/20">
+              {/* ✅ LIEU/BH protection toggle (Pro) */}
+              <div
+                className={`mt-3 rounded-xl border p-3 dark:border-white/20 ${!pro ? "opacity-60" : ""}`}
+                onClick={!pro ? requirePro : undefined}
+              >
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     className="mt-1 h-4 w-4"
+                    disabled={!pro}
                     checked={!!s.protectPremiumsForLieuBH}
                     onChange={(e) =>
                       setS((p) => ({
@@ -392,7 +457,9 @@ export default function SettingsPage() {
                     }
                   />
                   <span>
-                    <div className="text-sm font-semibold">Protect premiums for LIEU / BH</div>
+                    <div className="text-sm font-semibold">
+                      Protect premiums for LIEU / BH {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
+                    </div>
                     <div className="text-xs text-gray-600 dark:text-white/60">
                       If enabled, Late/Night is calculated across the scheduled window when a shift has LIEU or BH set.
                       If disabled, premiums only count when hours are physically worked.
@@ -407,7 +474,13 @@ export default function SettingsPage() {
                   className={inputClass}
                   value={s.premiumMode}
                   onChange={(e) => {
-                    const mode = e.target.value === "custom" ? "custom" : "preset";
+                    const modeRaw = e.target.value;
+                    if (!pro && modeRaw === "custom") {
+                      requirePro();
+                      return;
+                    }
+
+                    const mode = modeRaw === "custom" ? "custom" : "preset";
                     setS((p) => ({
                       ...p,
                       premiumMode: mode,
@@ -422,7 +495,7 @@ export default function SettingsPage() {
                   }}
                 >
                   <option value="preset">Preset</option>
-                  <option value="custom">Custom</option>
+                  <option value="custom">Custom {!pro ? "🔒" : ""}</option>
                 </select>
               </div>
 
@@ -446,125 +519,143 @@ export default function SettingsPage() {
               )}
 
               {s.premiumMode === "custom" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                  <div className="rounded-xl border p-3 dark:border-white/20">
-                    <div className="text-sm font-semibold mb-2">Late window</div>
+                <div
+                  className={!pro ? "opacity-60" : ""}
+                  onClick={!pro ? requirePro : undefined}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                    <div className="rounded-xl border p-3 dark:border-white/20">
+                      <div className="text-sm font-semibold mb-2">
+                        Late window {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
+                      </div>
 
-                    <label className={labelClass}>Start</label>
-                    <input
-                      className={inputClass}
-                      type="time"
-                      value={s.premiumCustomWindows?.late.start ?? "14:00"}
-                      onChange={(e) =>
-                        setS((p) => ({
-                          ...p,
-                          premiumCustomWindows: {
-                            ...(p.premiumCustomWindows ?? {
-                              late: { start: "14:00", end: "22:00" },
-                              night: { start: "22:00", end: "06:00" },
-                            }),
-                            late: {
-                              ...(p.premiumCustomWindows?.late ?? {
-                                start: "14:00",
-                                end: "22:00",
+                      <label className={labelClass}>Start</label>
+                      <input
+                        className={inputClass}
+                        type="time"
+                        disabled={!pro}
+                        value={s.premiumCustomWindows?.late.start ?? "14:00"}
+                        onChange={(e) =>
+                          setS((p) => ({
+                            ...p,
+                            premiumCustomWindows: {
+                              ...(p.premiumCustomWindows ?? {
+                                late: { start: "14:00", end: "22:00" },
+                                night: { start: "22:00", end: "06:00" },
                               }),
-                              start: e.target.value,
+                              late: {
+                                ...(p.premiumCustomWindows?.late ?? {
+                                  start: "14:00",
+                                  end: "22:00",
+                                }),
+                                start: e.target.value,
+                              },
                             },
-                          },
-                        }))
-                      }
-                    />
+                          }))
+                        }
+                      />
 
-                    <label className={`${labelClass} mt-3 block`}>End</label>
-                    <input
-                      className={inputClass}
-                      type="time"
-                      value={s.premiumCustomWindows?.late.end ?? "22:00"}
-                      onChange={(e) =>
-                        setS((p) => ({
-                          ...p,
-                          premiumCustomWindows: {
-                            ...(p.premiumCustomWindows ?? {
-                              late: { start: "14:00", end: "22:00" },
-                              night: { start: "22:00", end: "06:00" },
-                            }),
-                            late: {
-                              ...(p.premiumCustomWindows?.late ?? {
-                                start: "14:00",
-                                end: "22:00",
+                      <label className={`${labelClass} mt-3 block`}>End</label>
+                      <input
+                        className={inputClass}
+                        type="time"
+                        disabled={!pro}
+                        value={s.premiumCustomWindows?.late.end ?? "22:00"}
+                        onChange={(e) =>
+                          setS((p) => ({
+                            ...p,
+                            premiumCustomWindows: {
+                              ...(p.premiumCustomWindows ?? {
+                                late: { start: "14:00", end: "22:00" },
+                                night: { start: "22:00", end: "06:00" },
                               }),
-                              end: e.target.value,
+                              late: {
+                                ...(p.premiumCustomWindows?.late ?? {
+                                  start: "14:00",
+                                  end: "22:00",
+                                }),
+                                end: e.target.value,
+                              },
                             },
-                          },
-                        }))
-                      }
-                    />
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="rounded-xl border p-3 dark:border-white/20">
+                      <div className="text-sm font-semibold mb-2">
+                        Night window {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
+                      </div>
+
+                      <label className={labelClass}>Start</label>
+                      <input
+                        className={inputClass}
+                        type="time"
+                        disabled={!pro}
+                        value={s.premiumCustomWindows?.night.start ?? "22:00"}
+                        onChange={(e) =>
+                          setS((p) => ({
+                            ...p,
+                            premiumCustomWindows: {
+                              ...(p.premiumCustomWindows ?? {
+                                late: { start: "14:00", end: "22:00" },
+                                night: { start: "22:00", end: "06:00" },
+                              }),
+                              night: {
+                                ...(p.premiumCustomWindows?.night ?? {
+                                  start: "22:00",
+                                  end: "06:00",
+                                }),
+                                start: e.target.value,
+                              },
+                            },
+                          }))
+                        }
+                      />
+
+                      <label className={`${labelClass} mt-3 block`}>End</label>
+                      <input
+                        className={inputClass}
+                        type="time"
+                        disabled={!pro}
+                        value={s.premiumCustomWindows?.night.end ?? "06:00"}
+                        onChange={(e) =>
+                          setS((p) => ({
+                            ...p,
+                            premiumCustomWindows: {
+                              ...(p.premiumCustomWindows ?? {
+                                late: { start: "14:00", end: "22:00" },
+                                night: { start: "22:00", end: "06:00" },
+                              }),
+                              night: {
+                                ...(p.premiumCustomWindows?.night ?? {
+                                  start: "22:00",
+                                  end: "06:00",
+                                }),
+                                end: e.target.value,
+                              },
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <p className="sm:col-span-2 text-xs text-gray-500 dark:text-gray-400">
+                      Windows can cross midnight (e.g. 22:00 → 06:00).
+                    </p>
                   </div>
-
-                  <div className="rounded-xl border p-3 dark:border-white/20">
-                    <div className="text-sm font-semibold mb-2">Night window</div>
-
-                    <label className={labelClass}>Start</label>
-                    <input
-                      className={inputClass}
-                      type="time"
-                      value={s.premiumCustomWindows?.night.start ?? "22:00"}
-                      onChange={(e) =>
-                        setS((p) => ({
-                          ...p,
-                          premiumCustomWindows: {
-                            ...(p.premiumCustomWindows ?? {
-                              late: { start: "14:00", end: "22:00" },
-                              night: { start: "22:00", end: "06:00" },
-                            }),
-                            night: {
-                              ...(p.premiumCustomWindows?.night ?? {
-                                start: "22:00",
-                                end: "06:00",
-                              }),
-                              start: e.target.value,
-                            },
-                          },
-                        }))
-                      }
-                    />
-
-                    <label className={`${labelClass} mt-3 block`}>End</label>
-                    <input
-                      className={inputClass}
-                      type="time"
-                      value={s.premiumCustomWindows?.night.end ?? "06:00"}
-                      onChange={(e) =>
-                        setS((p) => ({
-                          ...p,
-                          premiumCustomWindows: {
-                            ...(p.premiumCustomWindows ?? {
-                              late: { start: "14:00", end: "22:00" },
-                              night: { start: "22:00", end: "06:00" },
-                            }),
-                            night: {
-                              ...(p.premiumCustomWindows?.night ?? {
-                                start: "22:00",
-                                end: "06:00",
-                              }),
-                              end: e.target.value,
-                            },
-                          },
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <p className="sm:col-span-2 text-xs text-gray-500 dark:text-gray-400">
-                    Windows can cross midnight (e.g. 22:00 → 06:00).
-                  </p>
                 </div>
               )}
             </div>
 
             {/* Pay rate change */}
-            <div className="border-t pt-4 dark:border-white/20">
-              <div className="text-sm font-semibold">Pay rate change</div>
+            <div
+              className={`border-t pt-4 dark:border-white/20 ${!pro ? "opacity-60" : ""}`}
+              onClick={!pro ? requirePro : undefined}
+            >
+              <div className="text-sm font-semibold">
+                Pay rate change {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
+              </div>
               <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
                 Set the date the new rate becomes effective. Past shifts keep their old rate.
               </p>
@@ -574,6 +665,7 @@ export default function SettingsPage() {
                 <input
                   className={inputClass}
                   type="date"
+                  disabled={!pro}
                   value={effectiveDate}
                   onChange={(e) => setEffectiveDate(e.target.value)}
                 />
@@ -586,6 +678,7 @@ export default function SettingsPage() {
                     className={inputClass}
                     type="number"
                     step="0.01"
+                    disabled={!pro}
                     value={rateDraft.baseRate}
                     onChange={(e) =>
                       setRateDraft((p) => ({ ...p, baseRate: Number(e.target.value) }))
@@ -599,6 +692,7 @@ export default function SettingsPage() {
                     className={inputClass}
                     type="number"
                     step="1"
+                    disabled={!pro}
                     value={rateDraft.otThreshold}
                     onChange={(e) =>
                       setRateDraft((p) => ({ ...p, otThreshold: Number(e.target.value) }))
@@ -612,6 +706,7 @@ export default function SettingsPage() {
                     className={inputClass}
                     type="number"
                     step="0.01"
+                    disabled={!pro}
                     value={rateDraft.otAddOn}
                     onChange={(e) =>
                       setRateDraft((p) => ({ ...p, otAddOn: Number(e.target.value) }))
@@ -625,6 +720,7 @@ export default function SettingsPage() {
                     className={inputClass}
                     type="number"
                     step="0.01"
+                    disabled={!pro}
                     value={rateDraft.latePremium}
                     onChange={(e) =>
                       setRateDraft((p) => ({ ...p, latePremium: Number(e.target.value) }))
@@ -638,6 +734,7 @@ export default function SettingsPage() {
                     className={inputClass}
                     type="number"
                     step="0.01"
+                    disabled={!pro}
                     value={rateDraft.nightPremium}
                     onChange={(e) =>
                       setRateDraft((p) => ({ ...p, nightPremium: Number(e.target.value) }))
@@ -651,6 +748,7 @@ export default function SettingsPage() {
                     className={inputClass}
                     type="number"
                     step="0.01"
+                    disabled={!pro}
                     value={rateDraft.doubleRate}
                     onChange={(e) =>
                       setRateDraft((p) => ({ ...p, doubleRate: Number(e.target.value) }))
@@ -662,9 +760,18 @@ export default function SettingsPage() {
 
             {/* Rate history */}
             <div className="border-t pt-4 dark:border-white/20">
-              <div className="text-sm font-semibold mb-2">Rate history</div>
+              <div className="text-sm font-semibold mb-2">
+                Rate history {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
+              </div>
 
-              {s.rates.length === 0 ? (
+              {!pro ? (
+                <div
+                  className="rounded-xl border p-3 text-xs text-gray-600 dark:text-white/60 dark:border-white/20"
+                  onClick={requirePro}
+                >
+                  Rate history is a Pro feature 🔒
+                </div>
+              ) : s.rates.length === 0 ? (
                 <div className="text-xs text-gray-600 dark:text-white/60">No rate history.</div>
               ) : (
                 <div className="space-y-2">
@@ -708,7 +815,7 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {s.rates.length <= 1 && (
+              {pro && s.rates.length <= 1 && (
                 <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                   You must keep at least one rate record.
                 </p>
