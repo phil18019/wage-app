@@ -20,3 +20,19 @@ html, body {
 body {
   font-family: Arial, Helvetica, sans-serif;
 }
+.perspective {
+  perspective: 1000px;
+}
+
+@keyframes flip-y {
+  0%   { transform: rotateY(0deg) scale(1.15); }
+  50%  { transform: rotateY(180deg) scale(1.15); }
+  100% { transform: rotateY(360deg) scale(1.15); }
+}
+
+.animate-flip-y {
+  display: inline-block;
+  animation: flip-y 10s linear infinite;
+  transform-style: preserve-3d;
+  will-change: transform;
+}

@@ -1,4 +1,4 @@
-mport withPWA from "next-pwa";
+import withPWA from "next-pwa";
 
 const nextConfig = {
   reactStrictMode: false,
