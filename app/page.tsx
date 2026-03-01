@@ -11,22 +11,6 @@ export default function Landing() {
           className="mx-auto h-44 w-44 sm:h-56 sm:w-56 rounded-3xl shadow-lg mb-6"
         />
 
-<<<<<<< HEAD
-          <img
-            src="/icon-192.png"
-            alt="Wage Check logo"
-            className="h-30 w-30 sm:h-16 sm:w-16 rounded-2xl shadow-md"
-          />
-         
-          <div>
-            <h1 className="text-2xl font-bold">Wage Check</h1>
-            <p className="text-xs text-gray-600 dark:text-white/60">
-              v{APP_VERSION} . Created by Phil Crompton
-            </p>
-            <div className="mt-2 rounded-xl bg-blue-100 text-blue-900 px-3 py-2 text-xs font-semibold">
-  Test site – under development
-</div>
-=======
         <p className="text-gray-600 dark:text-white/70 text-center max-w-md mx-auto mt-2 mb-6">
           Take control of your pay. Every hour. Every premium. Every time.
         </p>
@@ -43,7 +27,6 @@ export default function Landing() {
           </div>
           <div className="rounded-2xl bg-black/5 dark:bg-white/10 p-4">
             ✅ Intelligent leave &amp; part-shift logic
->>>>>>> engine-isolation
           </div>
         </div>
 
