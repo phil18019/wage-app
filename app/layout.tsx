@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Wage Check",
-  description: "Shift & wage calculator",
+  title: "PayCore",
+  description: "PayCore - Shift & pay calculator",
   manifest: "/manifest.json",
 
   icons: {
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Wage Check",
+    title: "PayCore",
   },
 
   other: {
