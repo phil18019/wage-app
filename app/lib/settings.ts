@@ -29,8 +29,17 @@ export type Settings = {
 
   // Premium windows (Late/Night)
   premiumMode: PremiumMode;
-  premiumPresetId: string; // e.g. "p1"
-  premiumCustomWindows?: PremiumWindows; // only meaningful when premiumMode === "custom"
+  premiumPresetId: string;
+  premiumCustomWindows?: PremiumWindows;
+
+  // ✅ Option A: protect premiums for LIEU/BH shifts?
+  // Default true (keeps current behaviour)
+  protectPremiumsForLieuBH: boolean;
+
+  // Holiday balance
+  holidayStartBalanceHours: number; // user entered starting balance
+  holidayBalanceStartDateYMD: string; // YYYY-MM-DD (when balance was true)
+  holidayTaxYearStart: { month: number; day: number }; // default UK: 4/6
 };
 
 export const SETTINGS_KEY = "wagecheck.settings.v1";
@@ -57,18 +66,44 @@ export const DEFAULT_SETTINGS: Settings = {
 
   premiumMode: "preset",
   premiumPresetId: "p1",
-  // NOTE: we do NOT store custom windows by default unless user selects "custom"
+  premiumCustomWindows: DEFAULT_CUSTOM_WINDOWS,
+
+  // ✅ default ON (protect LIEU/BH premiums)
+  protectPremiumsForLieuBH: true,
+
+  // Holiday balance defaults
+  holidayStartBalanceHours: 0,
+  holidayBalanceStartDateYMD: "", // empty = not configured yet
+  holidayTaxYearStart: { month: 4, day: 6 }, // UK tax year start
 };
+
+/* ------------------------- small helpers ------------------------- */
 
 function safeNum(x: unknown, fallback: number) {
   const n = Number(x);
   return Number.isFinite(n) ? n : fallback;
 }
 
-function clampWeekStartsOn(x: unknown, fallback: number) {
+function clampNonNeg(x: unknown, fallback: number) {
+  const n = safeNum(x, fallback);
+  return Math.max(0, n);
+}
+
+function clampInt(x: unknown, fallback: number, min: number, max: number) {
   const n = safeNum(x, fallback);
   const i = Math.floor(n);
-  return Math.min(6, Math.max(0, i));
+  return Math.min(max, Math.max(min, i));
+}
+
+function clampWeekStartsOn(x: unknown, fallback: number) {
+  return clampInt(x, fallback, 0, 6);
+}
+
+function safeBool(x: unknown, fallback: boolean) {
+  if (typeof x === "boolean") return x;
+  if (x === "true") return true;
+  if (x === "false") return false;
+  return fallback;
 }
 
 function isValidYMD(s: unknown): s is string {
@@ -79,12 +114,16 @@ function isValidHHMM(s: unknown): s is string {
   return typeof s === "string" && /^\d{2}:\d{2}$/.test(s);
 }
 
+/* ------------------------- premium settings normalize ------------------------- */
+
 function normalizePremiumMode(x: unknown): PremiumMode {
   return x === "custom" ? "custom" : "preset";
 }
 
 function normalizePremiumPresetId(x: unknown): string {
-  return typeof x === "string" && x.trim() ? x.trim() : DEFAULT_SETTINGS.premiumPresetId;
+  return typeof x === "string" && x.trim()
+    ? x.trim()
+    : DEFAULT_SETTINGS.premiumPresetId;
 }
 
 function normalizePremiumCustomWindows(x: unknown): PremiumWindows {
@@ -93,7 +132,6 @@ function normalizePremiumCustomWindows(x: unknown): PremiumWindows {
   const lateStart = isValidHHMM(obj?.late?.start)
     ? obj.late.start
     : DEFAULT_CUSTOM_WINDOWS.late.start;
-
   const lateEnd = isValidHHMM(obj?.late?.end)
     ? obj.late.end
     : DEFAULT_CUSTOM_WINDOWS.late.end;
@@ -101,7 +139,6 @@ function normalizePremiumCustomWindows(x: unknown): PremiumWindows {
   const nightStart = isValidHHMM(obj?.night?.start)
     ? obj.night.start
     : DEFAULT_CUSTOM_WINDOWS.night.start;
-
   const nightEnd = isValidHHMM(obj?.night?.end)
     ? obj.night.end
     : DEFAULT_CUSTOM_WINDOWS.night.end;
@@ -111,6 +148,37 @@ function normalizePremiumCustomWindows(x: unknown): PremiumWindows {
     night: { start: nightStart, end: nightEnd },
   };
 }
+
+function normalizeProtectPremiumsForLieuBH(x: unknown): boolean {
+  return safeBool(x, DEFAULT_SETTINGS.protectPremiumsForLieuBH);
+}
+
+/* ------------------------- holiday balance normalize ------------------------- */
+
+function normalizeTaxYearStart(x: unknown): { month: number; day: number } {
+  const obj = x as any;
+  const month = clampInt(
+    obj?.month,
+    DEFAULT_SETTINGS.holidayTaxYearStart.month,
+    1,
+    12
+  );
+  const day = clampInt(
+    obj?.day,
+    DEFAULT_SETTINGS.holidayTaxYearStart.day,
+    1,
+    31
+  );
+  return { month, day };
+}
+
+function normalizeHolidayStartDate(x: unknown): string {
+  // allow empty (not configured yet)
+  if (x === "" || x === null || x === undefined) return "";
+  return isValidYMD(x) ? x : "";
+}
+
+/* ------------------------- rate history normalize ------------------------- */
 
 function normalizeRates(rates: any[]): RateSnapshot[] {
   const cleaned: RateSnapshot[] = [];
@@ -130,12 +198,14 @@ function normalizeRates(rates: any[]): RateSnapshot[] {
     });
   }
 
-  // Ensure at least one record exists
   if (cleaned.length === 0) return [BASE_DEFAULT_RATE];
 
-  // Sort ascending by date
   cleaned.sort((a, b) =>
-    a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0
+    a.effectiveDate < b.effectiveDate
+      ? -1
+      : a.effectiveDate > b.effectiveDate
+        ? 1
+        : 0
   );
 
   // Deduplicate by effectiveDate (keep last)
@@ -154,7 +224,7 @@ function normalizeRates(rates: any[]): RateSnapshot[] {
  * If user has old single-values settings (baseRate, otAddOn, etc),
  * convert them into rates[] with effectiveDate "1900-01-01".
  */
-function migrateIfLegacy(parsed: any): any {
+function migrateIfLegacy(parsed: any): Settings {
   const isLegacy =
     parsed &&
     typeof parsed === "object" &&
@@ -165,7 +235,7 @@ function migrateIfLegacy(parsed: any): any {
       "otThreshold" in parsed ||
       "doubleRate" in parsed);
 
-  if (!isLegacy) return parsed;
+  if (!isLegacy) return parsed as Settings;
 
   const legacyRate: RateSnapshot = {
     effectiveDate: "1900-01-01",
@@ -178,27 +248,63 @@ function migrateIfLegacy(parsed: any): any {
   };
 
   return {
-    ...parsed,
+    holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
+    weekStartsOn: clampWeekStartsOn(
+      parsed?.weekStartsOn,
+      DEFAULT_SETTINGS.weekStartsOn
+    ),
     rates: normalizeRates([legacyRate]),
+
+    premiumMode: normalizePremiumMode(parsed?.premiumMode),
+    premiumPresetId: normalizePremiumPresetId(parsed?.premiumPresetId),
+    premiumCustomWindows: normalizePremiumCustomWindows(
+      parsed?.premiumCustomWindows
+    ),
+
+    // ✅ new setting (default true if missing)
+    protectPremiumsForLieuBH: normalizeProtectPremiumsForLieuBH(
+      parsed?.protectPremiumsForLieuBH
+    ),
+
+    holidayStartBalanceHours: clampNonNeg(
+      parsed?.holidayStartBalanceHours,
+      DEFAULT_SETTINGS.holidayStartBalanceHours
+    ),
+    holidayBalanceStartDateYMD: normalizeHolidayStartDate(
+      parsed?.holidayBalanceStartDateYMD
+    ),
+    holidayTaxYearStart: normalizeTaxYearStart(parsed?.holidayTaxYearStart),
   };
 }
 
 function normalizeSettingsShape(parsed: any): Settings {
-  const premiumMode = normalizePremiumMode(parsed?.premiumMode);
-
   return {
-    holidayRate: safeNum(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
-    weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
+    holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
+    weekStartsOn: clampWeekStartsOn(
+      parsed?.weekStartsOn,
+      DEFAULT_SETTINGS.weekStartsOn
+    ),
     rates: normalizeRates(Array.isArray(parsed?.rates) ? parsed.rates : []),
 
-    premiumMode,
+    premiumMode: normalizePremiumMode(parsed?.premiumMode),
     premiumPresetId: normalizePremiumPresetId(parsed?.premiumPresetId),
+    premiumCustomWindows: normalizePremiumCustomWindows(
+      parsed?.premiumCustomWindows
+    ),
 
-    // only persist/use custom windows if in custom mode
-    premiumCustomWindows:
-      premiumMode === "custom"
-        ? normalizePremiumCustomWindows(parsed?.premiumCustomWindows)
-        : undefined,
+    // ✅ new setting (default true if missing)
+    protectPremiumsForLieuBH: normalizeProtectPremiumsForLieuBH(
+      parsed?.protectPremiumsForLieuBH
+    ),
+
+    holidayStartBalanceHours: clampNonNeg(
+      parsed?.holidayStartBalanceHours,
+      DEFAULT_SETTINGS.holidayStartBalanceHours
+    ),
+    holidayBalanceStartDateYMD: normalizeHolidayStartDate(
+      parsed?.holidayBalanceStartDateYMD
+    ),
+    holidayTaxYearStart: normalizeTaxYearStart(parsed?.holidayTaxYearStart),
   };
 }
 
@@ -239,7 +345,6 @@ export function getRateForDate(date: string): RateSnapshot {
 
   const d = isValidYMD(date) ? date : "1900-01-01";
 
-  // rates ascending; pick last <= d
   let best = rates[0];
   for (const r of rates) {
     if (r.effectiveDate <= d) best = r;
@@ -282,12 +387,11 @@ export function deleteRateChange(effectiveDate: string) {
   const rates = normalizeRates(s.rates);
 
   const next = rates.filter((r) => r.effectiveDate !== effectiveDate);
-  if (next.length === 0) return; // keep at least 1
+  if (next.length === 0) return;
 
   saveSettings({ ...s, rates: next });
 }
 
 export function getQualifyingHours(): number {
-  // “current” threshold for UI convenience
   return getCurrentRate().otThreshold;
 }

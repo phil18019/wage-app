@@ -199,8 +199,14 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
     }
   }
 
-  // ✅ Premiums (now configurable via settings)
+  // ✅ Premiums (Option A: protect LIEU/BH controlled by a single setting flag)
   const premiumsBlocked = fullHol || fullUnpaid; // ONLY full hol/unpaid
+
+  // Default to TRUE if the field doesn't exist yet (keeps old behaviour)
+  const protectLieuBH =
+    (settings as any)?.protectPremiumsForLieuBH === undefined
+      ? true
+      : Boolean((settings as any)?.protectPremiumsForLieuBH);
 
   if (!premiumsBlocked && baseShift > 0 && r.startTime) {
     const hasEnd = (r.endTime ?? "").trim() !== "";
@@ -210,9 +216,18 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
 
     const hasDouble = (r.doubleFlag ?? "").trim() !== "";
 
+    const normalPremEnd = hasEnd
+      ? (r.endTime as string)
+      : sh > 0
+        ? addHoursToTime(r.startTime, sh)
+        : "";
+
+    const scheduledPremEnd =
+      sh > 0 ? addHoursToTime(r.startTime, sh) : normalPremEnd;
+
     let premEnd = "";
 
-    // Double: prefer actual endTime
+    // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
     if (hasDouble) {
       premEnd = hasEnd
         ? (r.endTime as string)
@@ -220,27 +235,22 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
           ? addHoursToTime(r.startTime, sh)
           : "";
     }
-    // LIEU/BH: premiums protected to scheduled window
-    else if (hasLieuOrBH) {
-      premEnd = sh > 0
-        ? addHoursToTime(r.startTime, sh)
-        : hasEnd
-          ? (r.endTime as string)
-          : "";
+    // LIEU/BH: only protect to scheduled window if the setting is ON
+    else if (hasLieuOrBH && protectLieuBH) {
+      premEnd = scheduledPremEnd;
     }
-    // Normal
+    // Normal (or LIEU/BH with protection OFF)
     else {
-      premEnd = hasEnd
-        ? (r.endTime as string)
-        : sh > 0
-          ? addHoursToTime(r.startTime, sh)
-          : "";
+      premEnd = normalPremEnd;
     }
 
     const windows = getPremiumWindows(settings);
     const p = computePremiumHours(r.startTime, premEnd, windows);
 
-    const premiumsProtected = hasLieuOrBH || hasDouble;
+    // Premiums count if:
+    // - It's a protected scenario (Double always protected; LIEU/BH depends on toggle), OR
+    // - There was worked time (normal shifts)
+    const premiumsProtected = hasDouble || (hasLieuOrBH && protectLieuBH);
 
     if (premiumsProtected || workedPhysical > 0) {
       out.late += clampNonNeg(p.lateHours);

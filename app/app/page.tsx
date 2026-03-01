@@ -1,13 +1,19 @@
+// app/app/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { DEFAULT_SETTINGS, getSettings, type Settings } from "../lib/settings";
+import { DEFAULT_SETTINGS, getSettings, type Settings, SETTINGS_KEY } from "../lib/settings";
 import { computeWorkedHours } from "../lib/engine/time";
 import { fmtGBP } from "../lib/engine/money";
+import { computeHolidayBalance } from "../lib/engine/holidayBalance";
 import { computeMonthTotals } from "../lib/engine/month";
 import { computeWeeklyTotals } from "../lib/engine/week";
-import { computePremiumHours, getPremiumWindows } from "../lib/engine/premiums";
+import {
+  computePremiumHours,
+  getPremiumWindows,
+  type PremiumWindows,
+} from "../lib/engine/premiums";
 import { isProEnabled, tryUnlockPro } from "../lib/pro";
 import {
   listSavedMonths,
@@ -74,10 +80,6 @@ function csvEscape(v: unknown) {
   return s;
 }
 
-/* ------------------------- premiums helpers ------------------------- */
-
-
-
 function addHoursToTime(startTime: string, hours: number) {
   const s = toMinutes(startTime);
   if (!Number.isFinite(s)) return "";
@@ -134,7 +136,7 @@ function deleteAllTimeShift(id: string) {
   saveAllTimeShifts(all);
 }
 
-function exportAllTimeCSV(windows: any) {
+function exportAllTimeCSV(settings: Settings, windows: PremiumWindows) {
   const all = listAllTimeShifts()
     .slice()
     .sort((a, b) => {
@@ -170,7 +172,7 @@ function exportAllTimeCSV(windows: any) {
     const worked = clampNonNeg(
       computeWorkedHours(r.startTime || "", r.endTime || "")
     );
-    const b = computeRowBreakdown(r, windows);
+    const b = computeRowBreakdown(r, settings, windows);
 
     const cells = [
       csvEscape(r.id),
@@ -199,23 +201,38 @@ function exportAllTimeCSV(windows: any) {
 
 /* ------------------------------------------------------------------------- */
 
-// FULL flags that mean "not worked" (Double is NOT one of these)
-function isOffFullFlag(
-  r: Pick<ShiftRow, "holidayFlag" | "unpaidFlag" | "lieuFlag" | "bankHolFlag">
-) {
-  return (
-    r.unpaidFlag === "Y" ||
-    r.holidayFlag === "Y" ||
-    r.lieuFlag === "Y" ||
-    r.bankHolFlag === "Y"
-  );
-}
-function computeRowBreakdown(r: ShiftRow, windows: any) {
+/**
+ * Per-row breakdown used by:
+ * - Shifts tab display (so Worked=0 when Full LIEU/BH/HOL/Unpaid)
+ * - CSV exports
+ *
+ * IMPORTANT: this mirrors the logic in app/lib/engine/week.ts
+ * including the new setting: settings.protectPremiumsForLieuBH
+ */
+function computeRowBreakdown(r: ShiftRow, settings: Settings, windows: PremiumWindows) {
   const sh = clampNonNeg(Number(r.scheduledHours) || 0);
-  const whRaw = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
-  const scheduledPortion = sh > 0 ? sh : whRaw;
+  const whRaw = clampNonNeg(computeWorkedHours(r.startTime ?? "", r.endTime ?? ""));
+  const baseShift = sh > 0 ? sh : whRaw;
 
-  const workedPhysical = isOffFullFlag(r) ? 0 : whRaw;
+  // FULL flags
+  const fullUnpaid = r.unpaidFlag === "Y";
+  const fullHol = r.holidayFlag === "Y";
+  const fullLieu = r.lieuFlag === "Y";
+  const fullBH = r.bankHolFlag === "Y";
+  const fullDouble = r.doubleFlag === "Y";
+
+  // PART flags
+  const partUnpaid = r.unpaidFlag === "P";
+  const partHol = r.holidayFlag === "P";
+  const partLieu = r.lieuFlag === "P";
+  const partBH = r.bankHolFlag === "P";
+  const partDouble = r.doubleFlag === "P";
+
+  // If any "full day off" flag is set, physical worked is 0.
+  // (Double is NOT a day-off flag.)
+  const workedPhysical = fullUnpaid || fullHol || fullLieu || fullBH ? 0 : whRaw;
+
+  let remainder = round2(Math.max(0, baseShift - workedPhysical));
 
   const out = {
     worked: workedPhysical,
@@ -230,64 +247,93 @@ function computeRowBreakdown(r: ShiftRow, windows: any) {
     night: 0,
   };
 
-  // Allocate flags on the SCHEDULED portion
-  if (r.unpaidFlag === "Y") {
-    out.unpaidFull = scheduledPortion;
-  } else if (r.holidayFlag === "Y") {
-    out.hol = scheduledPortion;
-  } else if (r.lieuFlag === "Y") {
-    out.lieu = scheduledPortion;
-  } else if (r.bankHolFlag === "Y") {
-    out.bankHol = scheduledPortion;
-  } else if (r.doubleFlag === "Y") {
-    out.dbl = scheduledPortion;
-  } else {
-    // PART flags consume ONLY the remainder (scheduled - worked)
-    let remainder = round2(Math.max(0, scheduledPortion - workedPhysical));
+  // FULL allocations (only one should be used)
+  if (fullUnpaid) {
+    out.unpaidFull = baseShift;
+    remainder = 0;
+  } else if (fullHol) {
+    out.hol = baseShift;
+    remainder = 0;
+  } else if (fullLieu) {
+    out.lieu = baseShift;
+    remainder = 0;
+  } else if (fullBH) {
+    out.bankHol = baseShift;
+    remainder = 0;
+  }
 
-    const takeRemainder = () => {
-      const amt = remainder;
+  // Double allocation (subset of worked)
+  if (fullDouble) {
+    out.dbl = round2(Math.min(baseShift, Math.max(0, whRaw || baseShift)));
+  } else if (partDouble) {
+    out.dbl = round2(Math.min(workedPhysical, baseShift / 2));
+  }
+
+  // PART allocations (consume remainder once, priority order)
+  if (remainder > 0) {
+    if (partUnpaid) {
+      out.unpaidPart += remainder;
       remainder = 0;
-      return amt;
-    };
-
-    if (r.unpaidFlag === "P" && remainder > 0)
-      out.unpaidPart += takeRemainder();
-    if (r.holidayFlag === "P" && remainder > 0) out.hol += takeRemainder();
-    if (r.lieuFlag === "P" && remainder > 0) out.lieu += takeRemainder();
-    if (r.bankHolFlag === "P" && remainder > 0)
-      out.bankHol += takeRemainder();
-    if (r.doubleFlag === "P" && remainder > 0) out.dbl += takeRemainder();
+    } else if (partHol) {
+      out.hol += remainder;
+      remainder = 0;
+    } else if (partLieu) {
+      out.lieu += remainder;
+      remainder = 0;
+    } else if (partBH) {
+      out.bankHol += remainder;
+      remainder = 0;
+    }
   }
 
   // Premiums
-  const premiumsBlocked = r.holidayFlag === "Y" || r.unpaidFlag === "Y";
-  const premiumsProtected =
-    r.lieuFlag !== "" || r.bankHolFlag !== "" || r.doubleFlag !== "";
+  const premiumsBlocked = fullHol || fullUnpaid; // ONLY full hol/unpaid
 
-  if (!premiumsBlocked && r.startTime) {
-    let premEnd = r.endTime;
+  // Default true if missing (keeps old behaviour)
+  const protectLieuBH =
+    (settings as any)?.protectPremiumsForLieuBH === undefined
+      ? true
+      : Boolean((settings as any)?.protectPremiumsForLieuBH);
 
-    if (premiumsProtected) {
-      const schedEnd = sh > 0 ? addHoursToTime(r.startTime, sh) : r.endTime;
+  if (!premiumsBlocked && baseShift > 0 && r.startTime) {
+    const hasEnd = (r.endTime ?? "").trim() !== "";
 
-      // Double: if worked exceeds scheduled, use actual end to include extra premiums
-      const isDouble = r.doubleFlag !== "";
-      if (isDouble && sh > 0 && workedPhysical > sh && r.endTime) {
-        premEnd = r.endTime;
-      } else {
-        premEnd = schedEnd;
-      }
+    const hasLieuOrBH = (r.lieuFlag ?? "").trim() !== "" || (r.bankHolFlag ?? "").trim() !== "";
+    const hasDouble = (r.doubleFlag ?? "").trim() !== "";
 
-      const p = computePremiumHours(r.startTime, premEnd, windows);
+    const normalPremEnd = hasEnd
+      ? (r.endTime as string)
+      : sh > 0
+        ? addHoursToTime(r.startTime, sh)
+        : "";
+
+    const scheduledPremEnd = sh > 0 ? addHoursToTime(r.startTime, sh) : normalPremEnd;
+
+    let premEnd = "";
+
+    // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
+    if (hasDouble) {
+      premEnd = hasEnd ? (r.endTime as string) : sh > 0 ? addHoursToTime(r.startTime, sh) : "";
+    }
+    // LIEU/BH: only protect to scheduled window if setting is ON
+    else if (hasLieuOrBH && protectLieuBH) {
+      premEnd = scheduledPremEnd;
+    }
+    // Normal (or LIEU/BH with protection OFF)
+    else {
+      premEnd = normalPremEnd;
+    }
+
+    const p = computePremiumHours(r.startTime, premEnd, windows);
+
+    // Premiums count if:
+    // - It's a protected scenario (Double always protected; LIEU/BH depends on toggle), OR
+    // - There was worked time (normal shifts)
+    const premiumsProtected = hasDouble || (hasLieuOrBH && protectLieuBH);
+
+    if (premiumsProtected || workedPhysical > 0) {
       out.late += clampNonNeg(p.lateHours);
       out.night += clampNonNeg(p.nightHours);
-    } else {
-      if (workedPhysical > 0) {
-       const p = computePremiumHours(r.startTime, r.endTime, windows);
-        out.late += clampNonNeg(p.lateHours);
-        out.night += clampNonNeg(p.nightHours);
-      }
     }
   }
 
@@ -325,9 +371,7 @@ function rateForDateFromSettings(settings: Settings, date: string) {
   const rates = Array.isArray((settings as any)?.rates) ? (settings as any).rates : [];
   if (!rates.length) return { otThreshold: 0 };
 
-  const sorted = [...rates].sort((a, b) =>
-    a.effectiveDate < b.effectiveDate ? -1 : 1
-  );
+  const sorted = [...rates].sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : 1));
 
   let best = sorted[0];
   for (const r of sorted) {
@@ -377,11 +421,12 @@ export default function Home() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const weekStartsOn = settings.weekStartsOn ?? 0;
-  const premiumWindows = useMemo(() => getPremiumWindows(settings), [settings]);
 
-const premiumLabel = useMemo(() => {
-  return `Late ${premiumWindows.late.start}–${premiumWindows.late.end} • Night ${premiumWindows.night.start}–${premiumWindows.night.end}`;
-}, [premiumWindows]);
+  const premiumWindows = useMemo(() => getPremiumWindows(settings), [settings]);
+  const premiumLabel = useMemo(() => {
+    return `Late ${premiumWindows.late.start}–${premiumWindows.late.end} • Night ${premiumWindows.night.start}–${premiumWindows.night.end}`;
+  }, [premiumWindows]);
+
   function refreshSavedMonths() {
     setSavedMonths(listSavedMonths());
   }
@@ -414,6 +459,35 @@ const premiumLabel = useMemo(() => {
       // ignore
     }
   }, []);
+
+  // Re-sync settings when returning from /settings (fixes Shift tab using stale checkbox value)
+useEffect(() => {
+  const syncSettings = () => {
+    try {
+      setSettings(getSettings());
+    } catch {
+      setSettings(DEFAULT_SETTINGS);
+    }
+  };
+
+  window.addEventListener("focus", syncSettings);
+
+  const onVis = () => {
+    if (!document.hidden) syncSettings();
+  };
+  document.addEventListener("visibilitychange", onVis);
+
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === SETTINGS_KEY) syncSettings();
+  };
+  window.addEventListener("storage", onStorage);
+
+  return () => {
+    window.removeEventListener("focus", syncSettings);
+    document.removeEventListener("visibilitychange", onVis);
+    window.removeEventListener("storage", onStorage);
+  };
+}, []);
 
   // keep dropdown selection valid
   useEffect(() => {
@@ -448,47 +522,99 @@ const premiumLabel = useMemo(() => {
 
   const sickConflict = Number(sickHours) > 0 && (startTime !== "" || endTime !== "");
 
-  const workedHours = useMemo(
-    () => computeWorkedHours(startTime, endTime),
-    [startTime, endTime]
-  );
+  const workedHoursRaw = useMemo(
+  () => clampNonNeg(computeWorkedHours(startTime, endTime)),
+  [startTime, endTime]
+);
 
-  const prem = useMemo(() => {
-    const sh = clampNonNeg(Number(scheduledHours) || 0);
-    const wh = clampNonNeg(computeWorkedHours(startTime, endTime));
+// ✅ What the UI should show as "Worked hours" on Shift tab
+// Full LIEU/BH/HOL/Unpaid = not physically worked (even if times entered)
+const workedHours = useMemo(() => {
+  const fullHol = holidayFlag === "Y";
+  const fullUnpaid = unpaidFlag === "Y";
+  const fullLieu = lieuFlag === "Y";
+  const fullBH = bankHolFlag === "Y";
+  return fullHol || fullUnpaid || fullLieu || fullBH ? 0 : workedHoursRaw;
+}, [workedHoursRaw, holidayFlag, unpaidFlag, lieuFlag, bankHolFlag]);
 
-    const premiumsBlocked = holidayFlag === "Y" || unpaidFlag === "Y";
-    const premiumsProtected =
-      lieuFlag !== "" || bankHolFlag !== "" || doubleFlag !== "";
+  // ✅ Shift-tab premiums now match week/month rules:
+// - With checkbox OFF: LIEU/BH do NOT protect premiums AND premiums only count when physically worked.
+// - Full LIEU/BH/HOL/Unpaid => workedPhysical=0, so premiums must be 0.
+const prem = useMemo(() => {
+  const sh = clampNonNeg(Number(scheduledHours) || 0);
+  const wh = workedHoursRaw; // raw worked from times (may be >0 even on Full LIEU)
+  const workedPhysical =
+    holidayFlag === "Y" || unpaidFlag === "Y" || lieuFlag === "Y" || bankHolFlag === "Y"
+      ? 0
+      : wh;
 
-    if (premiumsBlocked || !startTime) return { lateHours: 0, nightHours: 0 };
+  const fullHol = holidayFlag === "Y";
+  const fullUnpaid = unpaidFlag === "Y";
+  const premiumsBlocked = fullHol || fullUnpaid;
 
-    if (premiumsProtected) {
-      const schedEnd = sh > 0 ? addHoursToTime(startTime, sh) : endTime;
-      const isDouble = doubleFlag !== "";
-      const premEnd =
-        isDouble && sh > 0 && wh > sh && endTime ? endTime : schedEnd;
-     return computePremiumHours(startTime, premEnd, premiumWindows);
+  const protectLieuBH =
+    (settings as any)?.protectPremiumsForLieuBH === undefined
+      ? true
+      : Boolean((settings as any)?.protectPremiumsForLieuBH);
+
+  const hasLieuOrBH = lieuFlag !== "" || bankHolFlag !== "";
+  const hasDouble = doubleFlag !== "";
+
+  if (premiumsBlocked || !startTime) return { lateHours: 0, nightHours: 0 };
+
+  const hasEnd = (endTime || "").trim() !== "";
+
+  const normalPremEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
+  const scheduledPremEnd = sh > 0 ? addHoursToTime(startTime, sh) : normalPremEnd;
+
+  let premEnd = normalPremEnd;
+
+  // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
+  if (hasDouble) {
+    premEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
+  }
+  // LIEU/BH: protect to scheduled window only if toggle ON
+  else if (hasLieuOrBH && protectLieuBH) {
+    premEnd = scheduledPremEnd;
+  }
+  // Normal (or LIEU/BH with protection OFF)
+  else {
+    premEnd = normalPremEnd;
+  }
+
+  const p = computePremiumHours(startTime, premEnd, premiumWindows);
+
+  // Premiums count if:
+  // - Protected scenario (Double always; LIEU/BH only when toggle ON), OR
+  // - There was physically worked time
+  const premiumsProtected = hasDouble || (hasLieuOrBH && protectLieuBH);
+
+  if (premiumsProtected || workedPhysical > 0) return p;
+
+  return { lateHours: 0, nightHours: 0 };
+}, [
+  startTime,
+  endTime,
+  scheduledHours,
+  holidayFlag,
+  unpaidFlag,
+  lieuFlag,
+  bankHolFlag,
+  doubleFlag,
+  premiumWindows,
+  settings,
+  workedHoursRaw,
+]);
+
+  const month = useMemo(() => computeMonthTotals(rows as any, settings), [rows, settings]);
+
+  const holidayBal = useMemo(() => {
+    try {
+      return computeHolidayBalance(rows as any, settings as any);
+    } catch {
+      return null;
     }
-
-    if (wh <= 0) return { lateHours: 0, nightHours: 0 };
-    return computePremiumHours(startTime, endTime, premiumWindows);
-  }, [
-    startTime,
-    endTime,
-    scheduledHours,
-    holidayFlag,
-    unpaidFlag,
-    lieuFlag,
-    bankHolFlag,
-    doubleFlag,
-    premiumWindows,
-  ]);
-
-  const month = useMemo(
-    () => computeMonthTotals(rows as any, settings),
-    [rows, settings]
-  );
+  }, [rows, settings]);
 
   const weeks = useMemo(
     () => computeWeeklyTotals(rows as any, settings, weekStartsOn),
@@ -613,6 +739,14 @@ const premiumLabel = useMemo(() => {
       return;
     }
 
+    const ok = confirm(
+      "Save this month as a history snapshot?\n\n" +
+        "This locks the totals for this period.\n" +
+        "Future edits to shifts will NOT update this saved month.\n\n" +
+        "If you need to change it later, delete the saved month and save again."
+    );
+    if (!ok) return;
+
     const id = monthIdFromDate(date);
     const defaultLabel = labelFromMonthId(id);
 
@@ -623,8 +757,8 @@ const premiumLabel = useMemo(() => {
     const existing = savedMonths.find((m) => m.id === id);
 
     if (existing) {
-      const ok = confirm(`${existing.label} already exists. Overwrite saved period?`);
-      if (!ok) return;
+      const ok2 = confirm(`${existing.label} already exists. Overwrite saved period?`);
+      if (!ok2) return;
 
       const oldRows = (existing.rows ?? []) as ShiftRow[];
       for (const r of oldRows) {
@@ -658,10 +792,10 @@ const premiumLabel = useMemo(() => {
     }
 
     const found = savedMonths.find((m) => m.id === id);
-    const label = found?.label ?? id;
+    const labelTxt = found?.label ?? id;
 
     const msg =
-      `Delete saved period "${label}"?\n\n` +
+      `Delete saved period "${labelTxt}"?\n\n` +
       `This will permanently remove:\n` +
       `• The saved period entry\n` +
       `• All shifts stored inside it (also removed from Export ALL shifts)\n\n` +
@@ -725,7 +859,7 @@ const premiumLabel = useMemo(() => {
 
     const rowsCsv = rows.map((r) => {
       const worked = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
-      const b = computeRowBreakdown(r, premiumWindows);
+      const b = computeRowBreakdown(r, settings, premiumWindows);
 
       const cells = [
         csvEscape(r.date),
@@ -890,7 +1024,7 @@ const premiumLabel = useMemo(() => {
               </button>
             </div>
 
-            {/* Flags (keep in one card, as requested) */}
+            {/* Flags */}
             <div className="min-w-0">
               <div className={label}>Holiday</div>
               <select
@@ -987,9 +1121,7 @@ const premiumLabel = useMemo(() => {
               <div className="text-xl font-bold text-gray-900 dark:text-white">
                 {prem.lateHours} / {prem.nightHours}
               </div>
-              <div className="text-xs text-gray-600 dark:text-white/50 mt-1">
-          {premiumLabel}
-         </div>
+              <div className="text-xs text-gray-600 dark:text-white/50 mt-1">{premiumLabel}</div>
             </div>
           </div>
 
@@ -1033,7 +1165,7 @@ const premiumLabel = useMemo(() => {
           ) : (
             <div className="space-y-3">
               {rows.map((r) => {
-                const wh = computeWorkedHours(r.startTime, r.endTime);
+                const b = computeRowBreakdown(r, settings, premiumWindows);
                 return (
                   <div key={r.id} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
                     <div className="flex items-center justify-between gap-3">
@@ -1064,30 +1196,43 @@ const premiumLabel = useMemo(() => {
                       </div>
                     </div>
 
+                    {/* ✅ show numeric hours (matches Week/Month logic) */}
                     <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
                       <div>
                         Scheduled: <b>{r.scheduledHours ?? 0}</b>
                       </div>
                       <div>
-                        Worked: <b>{wh}</b>
+                        Worked: <b>{b.worked}</b>
+                      </div>
+
+                      <div>
+                        Holiday hrs: <b>{b.hol}</b> <span className="text-xs opacity-70">({displayFlag(r.holidayFlag)})</span>
                       </div>
                       <div>
-                        Holiday: <b>{displayFlag(r.holidayFlag)}</b>
+                        Unpaid hrs:{" "}
+                        <b>{round2(b.unpaidFull + b.unpaidPart)}</b>{" "}
+                        <span className="text-xs opacity-70">({displayFlag(r.unpaidFlag)})</span>
+                      </div>
+
+                      <div>
+                        LIEU hrs: <b>{b.lieu}</b> <span className="text-xs opacity-70">({displayFlag(r.lieuFlag)})</span>
                       </div>
                       <div>
-                        Unpaid: <b>{displayFlag(r.unpaidFlag)}</b>
+                        BH hrs: <b>{b.bankHol}</b> <span className="text-xs opacity-70">({displayFlag(r.bankHolFlag)})</span>
+                      </div>
+
+                      <div>
+                        Double hrs: <b>{b.dbl}</b> <span className="text-xs opacity-70">({displayFlag(r.doubleFlag)})</span>
                       </div>
                       <div>
-                        LIEU: <b>{displayFlag(r.lieuFlag)}</b>
+                        Sick hrs: <b>{r.sickHours ?? 0}</b>
+                      </div>
+
+                      <div>
+                        Late prem: <b>{b.late}</b>
                       </div>
                       <div>
-                        BH: <b>{displayFlag(r.bankHolFlag)}</b>
-                      </div>
-                      <div>
-                        Double: <b>{displayFlag(r.doubleFlag)}</b>
-                      </div>
-                      <div>
-                        Sick: <b>{r.sickHours ?? 0}</b>
+                        Night prem: <b>{b.night}</b>
                       </div>
                     </div>
                   </div>
@@ -1174,7 +1319,7 @@ const premiumLabel = useMemo(() => {
 
               <button
                 className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
-                onClick={() => exportAllTimeCSV(premiumWindows)}
+                onClick={() => exportAllTimeCSV(settings, premiumWindows)}
                 title="Exports every shift you've ever saved (even across cleared months)"
               >
                 Export ALL shifts
@@ -1276,6 +1421,39 @@ const premiumLabel = useMemo(() => {
             </div>
 
             <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
+
+            {/* Holiday balance */}
+            <div className="pt-4 mt-4 border-t border-white/20">
+              <div className="text-lg font-semibold mb-2">Holiday balance</div>
+
+              {!holidayBal || !settings.holidayBalanceStartDateYMD ? (
+                <div className="text-sm text-gray-600 dark:text-white/60">
+                  Set your starting balance + “balance as at” date in Settings to enable this.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                    <div>
+                      Starting balance: <b>{holidayBal.startingBalance}</b> hrs
+                    </div>
+                    <div>
+                      Holiday taken: <b>{holidayBal.holidayTakenHours}</b> hrs
+                    </div>
+                    <div className="sm:col-span-2">
+                      Remaining balance: <b>{holidayBal.remainingBalance}</b> hrs
+                    </div>
+                  </div>
+
+                  <div className="mt-2 text-xs text-gray-600 dark:text-white/60">
+                    Counting Holiday shifts from <b>{holidayBal.periodStart}</b> onwards (within the tax year).
+                  </div>
+
+                  <div className="mt-2 rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-xs">
+                    Balance is only fully accurate if your starting balance is entered from the start of the current tax year.
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1435,56 +1613,55 @@ const premiumLabel = useMemo(() => {
         </div>
       )}
 
-     {/* Bottom sticky nav */}
-<div className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none">
-  <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)] pointer-events-none">
-    {/* Only this card + its buttons should receive taps */}
-    <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/90 dark:bg-black/60 backdrop-blur p-2 shadow-lg pointer-events-auto">
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className={tabButtonClass(activeTab === "shift")}
-          onClick={() => setActiveTab("shift")}
-        >
-          Shift
-        </button>
+      {/* Bottom sticky nav (mobile tap-safe) */}
+      <div className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)] pointer-events-none">
+          <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/90 dark:bg-black/60 backdrop-blur p-2 shadow-lg pointer-events-auto">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "shift")}
+                onClick={() => setActiveTab("shift")}
+              >
+                Shift
+              </button>
 
-        <button
-          type="button"
-          className={tabButtonClass(activeTab === "shifts")}
-          onClick={() => setActiveTab("shifts")}
-        >
-          Shifts
-        </button>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "shifts")}
+                onClick={() => setActiveTab("shifts")}
+              >
+                Shifts
+              </button>
 
-        <button
-          type="button"
-          className={tabButtonClass(activeTab === "week")}
-          onClick={() => setActiveTab("week")}
-        >
-          Week
-        </button>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "week")}
+                onClick={() => setActiveTab("week")}
+              >
+                Week
+              </button>
 
-        <button
-          type="button"
-          className={tabButtonClass(activeTab === "month")}
-          onClick={() => setActiveTab("month")}
-        >
-          Month
-        </button>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "month")}
+                onClick={() => setActiveTab("month")}
+              >
+                Month
+              </button>
 
-        <button
-          type="button"
-          className={tabButtonClass(activeTab === "history", !pro)}
-          onClick={() => setActiveTab("history")}
-          title={!pro ? "Pro feature" : "History"}
-        >
-          {pro ? "History" : "History 🔒"}
-        </button>
+              <button
+                type="button"
+                className={tabButtonClass(activeTab === "history", !pro)}
+                onClick={() => setActiveTab("history")}
+                title={!pro ? "Pro feature" : "History"}
+              >
+                {pro ? "History" : "History 🔒"}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</div>
- </main>
+    </main>
   );
 }

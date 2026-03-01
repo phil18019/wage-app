@@ -1,4 +1,5 @@
 "use client";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -38,6 +39,10 @@ function num(x: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function clampNonNeg(n: number) {
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
 function round2(n: number) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
@@ -46,9 +51,7 @@ function rateForDateFromSettings(settings: Settings, date: string): RateSnapshot
   const rates = Array.isArray(settings?.rates) ? settings.rates : [];
   if (!rates.length) return DEFAULT_SETTINGS.rates[0];
 
-  const sorted = [...rates].sort((a, b) =>
-    a.effectiveDate < b.effectiveDate ? -1 : 1
-  );
+  const sorted = [...rates].sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : 1));
 
   let best = sorted[0];
   for (const r of sorted) {
@@ -56,6 +59,12 @@ function rateForDateFromSettings(settings: Settings, date: string): RateSnapshot
     else break;
   }
   return best;
+}
+
+function rateExactForDate(settings: Settings, date: string): RateSnapshot | null {
+  const rates = Array.isArray(settings?.rates) ? settings.rates : [];
+  const found = rates.find((r) => r.effectiveDate === date);
+  return found ?? null;
 }
 
 export default function SettingsPage() {
@@ -101,25 +110,26 @@ export default function SettingsPage() {
     savingRef.current = true;
 
     try {
-      // Compare against what is already saved for that effective date.
-      const existingForEff = rateForDateFromSettings(s, effectiveDate);
-
       const nextDraft = {
-        baseRate: round2(num(rateDraft.baseRate)),
-        otAddOn: round2(num(rateDraft.otAddOn)),
-        latePremium: round2(num(rateDraft.latePremium)),
-        nightPremium: round2(num(rateDraft.nightPremium)),
-        otThreshold: num(rateDraft.otThreshold),
-        doubleRate: round2(num(rateDraft.doubleRate)),
+        baseRate: round2(clampNonNeg(num(rateDraft.baseRate))),
+        otAddOn: round2(clampNonNeg(num(rateDraft.otAddOn))),
+        latePremium: round2(clampNonNeg(num(rateDraft.latePremium))),
+        nightPremium: round2(clampNonNeg(num(rateDraft.nightPremium))),
+        otThreshold: clampNonNeg(num(rateDraft.otThreshold)),
+        doubleRate: round2(clampNonNeg(num(rateDraft.doubleRate))),
       };
 
+      // Prefer comparing against exact entry for effectiveDate (if it exists)
+      const exact = rateExactForDate(s, effectiveDate);
+      const baseline = exact ?? rateForDateFromSettings(s, effectiveDate);
+
       const existingNorm = {
-        baseRate: round2(num(existingForEff.baseRate)),
-        otAddOn: round2(num(existingForEff.otAddOn)),
-        latePremium: round2(num(existingForEff.latePremium)),
-        nightPremium: round2(num(existingForEff.nightPremium)),
-        otThreshold: num(existingForEff.otThreshold),
-        doubleRate: round2(num(existingForEff.doubleRate)),
+        baseRate: round2(clampNonNeg(num(baseline.baseRate))),
+        otAddOn: round2(clampNonNeg(num(baseline.otAddOn))),
+        latePremium: round2(clampNonNeg(num(baseline.latePremium))),
+        nightPremium: round2(clampNonNeg(num(baseline.nightPremium))),
+        otThreshold: clampNonNeg(num(baseline.otThreshold)),
+        doubleRate: round2(clampNonNeg(num(baseline.doubleRate))),
       };
 
       const rateChanged =
@@ -130,8 +140,13 @@ export default function SettingsPage() {
         nextDraft.otThreshold !== existingNorm.otThreshold ||
         nextDraft.doubleRate !== existingNorm.doubleRate;
 
-      // 1) Always save base settings (holiday + week start + premium settings + existing rates array)
-      saveSettings(s);
+      // 1) Save base settings (holiday + week start + premium settings + holiday balance inputs + premiums protection toggle)
+      saveSettings({
+        ...s,
+        holidayRate: clampNonNeg(num(s.holidayRate)),
+        holidayStartBalanceHours: clampNonNeg(num(s.holidayStartBalanceHours)),
+        protectPremiumsForLieuBH: !!s.protectPremiumsForLieuBH,
+      });
 
       // 2) Only upsert rate history if something actually changed
       if (rateChanged) {
@@ -233,7 +248,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="grid gap-4">
-            {/* Holiday rate stays manual (not in history) */}
+            {/* Holiday rate */}
             <div>
               <label className={labelClass}>Holiday rate (£)</label>
               <input
@@ -241,7 +256,9 @@ export default function SettingsPage() {
                 type="number"
                 step="0.01"
                 value={s.holidayRate}
-                onChange={(e) => setS((p) => ({ ...p, holidayRate: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setS((p) => ({ ...p, holidayRate: Number(e.target.value) }))
+                }
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Holiday rate can vary — update when needed (not stored in history).
@@ -254,7 +271,9 @@ export default function SettingsPage() {
               <select
                 className={inputClass}
                 value={s.weekStartsOn}
-                onChange={(e) => setS((p) => ({ ...p, weekStartsOn: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setS((p) => ({ ...p, weekStartsOn: Number(e.target.value) }))
+                }
               >
                 {WEEKDAY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -264,12 +283,123 @@ export default function SettingsPage() {
               </select>
             </div>
 
+            {/* Holiday balance */}
+            <div className="border-t pt-4 dark:border-white/20">
+              <div className="text-sm font-semibold">Holiday balance</div>
+              <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
+                Enter your balance as at a date. The app will deduct any Holiday shifts after that date (and within the tax year).
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                <div>
+                  <label className={labelClass}>Starting balance (hours)</label>
+                  <input
+                    className={inputClass}
+                    type="number"
+                    step="0.01"
+                    value={s.holidayStartBalanceHours ?? 0}
+                    onChange={(e) =>
+                      setS((p) => ({
+                        ...p,
+                        holidayStartBalanceHours: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Balance as at (date)</label>
+                  <input
+                    className={inputClass}
+                    type="date"
+                    value={s.holidayBalanceStartDateYMD ?? ""}
+                    onChange={(e) =>
+                      setS((p) => ({
+                        ...p,
+                        holidayBalanceStartDateYMD: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div>
+                  <label className={labelClass}>Tax year starts (month)</label>
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={s.holidayTaxYearStart?.month ?? 4}
+                    onChange={(e) =>
+                      setS((p) => ({
+                        ...p,
+                        holidayTaxYearStart: {
+                          month: Number(e.target.value),
+                          day: p.holidayTaxYearStart?.day ?? 6,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Tax year starts (day)</label>
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={s.holidayTaxYearStart?.day ?? 6}
+                    onChange={(e) =>
+                      setS((p) => ({
+                        ...p,
+                        holidayTaxYearStart: {
+                          month: p.holidayTaxYearStart?.month ?? 4,
+                          day: Number(e.target.value),
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Tip: For UK tax year use 06/04. Balance is most accurate if you start from the tax-year start date.
+              </p>
+            </div>
+
             {/* Premium windows */}
             <div className="border-t pt-4 dark:border-white/20">
               <div className="text-sm font-semibold">Premium windows</div>
               <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
                 Choose which time windows count as Late / Night.
               </p>
+
+              {/* ✅ NEW: LIEU/BH protection toggle */}
+              <div className="mt-3 rounded-xl border p-3 dark:border-white/20">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={!!s.protectPremiumsForLieuBH}
+                    onChange={(e) =>
+                      setS((p) => ({
+                        ...p,
+                        protectPremiumsForLieuBH: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>
+                    <div className="text-sm font-semibold">Protect premiums for LIEU / BH</div>
+                    <div className="text-xs text-gray-600 dark:text-white/60">
+                      If enabled, Late/Night is calculated across the scheduled window when a shift has LIEU or BH set.
+                      If disabled, premiums only count when hours are physically worked.
+                    </div>
+                  </span>
+                </label>
+              </div>
 
               <div className="mt-3">
                 <label className={labelClass}>Mode</label>
@@ -283,10 +413,10 @@ export default function SettingsPage() {
                       premiumMode: mode,
                       premiumCustomWindows:
                         mode === "custom"
-                          ? (p.premiumCustomWindows ?? {
+                          ? p.premiumCustomWindows ?? {
                               late: { start: "14:00", end: "22:00" },
                               night: { start: "22:00", end: "06:00" },
-                            })
+                            }
                           : p.premiumCustomWindows,
                     }));
                   }}
@@ -302,7 +432,9 @@ export default function SettingsPage() {
                   <select
                     className={inputClass}
                     value={s.premiumPresetId}
-                    onChange={(e) => setS((p) => ({ ...p, premiumPresetId: e.target.value }))}
+                    onChange={(e) =>
+                      setS((p) => ({ ...p, premiumPresetId: e.target.value }))
+                    }
                   >
                     {PREMIUM_PRESETS.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -332,7 +464,10 @@ export default function SettingsPage() {
                               night: { start: "22:00", end: "06:00" },
                             }),
                             late: {
-                              ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
+                              ...(p.premiumCustomWindows?.late ?? {
+                                start: "14:00",
+                                end: "22:00",
+                              }),
                               start: e.target.value,
                             },
                           },
@@ -354,7 +489,10 @@ export default function SettingsPage() {
                               night: { start: "22:00", end: "06:00" },
                             }),
                             late: {
-                              ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
+                              ...(p.premiumCustomWindows?.late ?? {
+                                start: "14:00",
+                                end: "22:00",
+                              }),
                               end: e.target.value,
                             },
                           },
@@ -380,7 +518,10 @@ export default function SettingsPage() {
                               night: { start: "22:00", end: "06:00" },
                             }),
                             night: {
-                              ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
+                              ...(p.premiumCustomWindows?.night ?? {
+                                start: "22:00",
+                                end: "06:00",
+                              }),
                               start: e.target.value,
                             },
                           },
@@ -402,7 +543,10 @@ export default function SettingsPage() {
                               night: { start: "22:00", end: "06:00" },
                             }),
                             night: {
-                              ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
+                              ...(p.premiumCustomWindows?.night ?? {
+                                start: "22:00",
+                                end: "06:00",
+                              }),
                               end: e.target.value,
                             },
                           },
@@ -418,6 +562,7 @@ export default function SettingsPage() {
               )}
             </div>
 
+            {/* Pay rate change */}
             <div className="border-t pt-4 dark:border-white/20">
               <div className="text-sm font-semibold">Pay rate change</div>
               <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
