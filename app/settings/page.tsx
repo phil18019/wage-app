@@ -286,7 +286,6 @@ export default function SettingsPage() {
         <div className="rounded-2xl border bg-white p-5 shadow-sm dark:bg-gray-800 dark:border-white/20">
           <div className="flex items-center justify-between gap-3 mb-4">
             <h1 className="text-2xl font-bold">Settings</h1>
-            <span className="text-sm text-green-700 dark:text-green-400">{msg}</span>
           </div>
 
           {!pro && (
@@ -797,21 +796,27 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex gap-3 flex-wrap">
-            <button
-              onClick={save}
-              className="rounded-xl px-5 py-2 font-semibold bg-green-600 text-white hover:bg-green-700"
-            >
-              Save
-            </button>
+         <div className="mt-6 flex items-center gap-3 flex-wrap">
+  <button
+    onClick={save}
+    className="rounded-xl px-5 py-2 font-semibold bg-green-600 text-white hover:bg-green-700"
+  >
+    Save
+  </button>
 
-            <button
-              onClick={restore}
-              className="rounded-xl px-5 py-2 font-semibold bg-gray-300 text-gray-900 hover:bg-gray-400 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
-            >
-              Restore defaults
-            </button>
-          </div>
+  {msg && (
+    <span className="text-sm text-green-700 dark:text-green-400 animate-fadeIn">
+      {msg}
+    </span>
+  )}
+
+  <button
+    onClick={restore}
+    className="rounded-xl px-5 py-2 font-semibold bg-gray-300 text-gray-900 hover:bg-gray-400 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+  >
+    Restore defaults
+  </button>
+</div>
         </div>
 
         <p className="mt-6 text-xs text-gray-500 dark:text-gray-400 text-center">
