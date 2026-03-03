@@ -274,7 +274,7 @@ export default function SettingsPage() {
   const labelClass = "text-sm font-medium text-gray-700 dark:text-gray-200";
 
   return (
-  <main className="min-h-[100dvh] pb-28 bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <main className="min-h-[100dvh] pb-28 bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <div className="mx-auto max-w-3xl flex flex-col">
         <button
           onClick={() => router.push("/app")}
@@ -488,11 +488,13 @@ export default function SettingsPage() {
                       premiumMode: mode,
                       premiumCustomWindows:
                         mode === "custom"
-                          ? p.premiumCustomWindows ?? {
+                          ? ((p as any).premiumCustomWindows ?? {
+                              lateEnabled: true,
+                              nightEnabled: true,
                               late: { start: "14:00", end: "22:00" },
                               night: { start: "22:00", end: "06:00" },
-                            }
-                          : p.premiumCustomWindows,
+                            })
+                          : (p as any).premiumCustomWindows,
                     }));
                   }}
                 >
@@ -520,8 +522,76 @@ export default function SettingsPage() {
 
               {s.premiumMode === "custom" && (
                 <div className={!pro ? "opacity-60" : ""} onClick={!pro ? requirePro : undefined}>
+                  {/* Enable toggles */}
+                  <div className="mt-3 flex flex-col sm:flex-row gap-3">
+               <label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 dark:border-white/20">
+  <input
+    type="checkbox"
+    disabled={!pro}
+    checked={!!s.premiumCustomWindows?.late?.enabled}
+    onChange={(e) => {
+      const enabled = e.target.checked;
+
+      setS((p) => {
+        const cur = p.premiumCustomWindows ?? {
+          late: { enabled: true, start: "14:00", end: "22:00" },
+          night: { enabled: true, start: "22:00", end: "06:00" },
+        };
+
+        return {
+          ...p,
+          premiumCustomWindows: {
+            ...cur,
+            late: {
+              ...cur.late,
+              enabled,
+            },
+          },
+        };
+      });
+    }}
+  />
+  <span className="text-sm">Enable Late window</span>
+</label>
+
+<label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 dark:border-white/20">
+  <input
+    type="checkbox"
+    disabled={!pro}
+    checked={!!s.premiumCustomWindows?.night?.enabled}
+    onChange={(e) => {
+      const enabled = e.target.checked;
+
+      setS((p) => {
+        const cur = p.premiumCustomWindows ?? {
+          late: { enabled: true, start: "14:00", end: "22:00" },
+          night: { enabled: true, start: "22:00", end: "06:00" },
+        };
+
+        return {
+          ...p,
+          premiumCustomWindows: {
+            ...cur,
+            night: {
+              ...cur.night,
+              enabled,
+            },
+          },
+        };
+      });
+    }}
+  />
+  <span className="text-sm">Enable Night window</span>
+</label>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                    <div className="rounded-xl border p-3 dark:border-white/20">
+                    {/* Late card */}
+                    <div
+                      className={`rounded-xl border p-3 dark:border-white/20 ${
+                        (((s as any).premiumCustomWindows?.lateEnabled ?? true) ? "" : "opacity-50")
+                      }`}
+                    >
                       <div className="text-sm font-semibold mb-2">
                         Late window {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
                       </div>
@@ -530,18 +600,23 @@ export default function SettingsPage() {
                       <input
                         className={inputClass}
                         type="time"
-                        disabled={!pro}
-                        value={s.premiumCustomWindows?.late.start ?? "14:00"}
+                        disabled={
+                          !pro ||
+                          !(((s as any).premiumCustomWindows?.lateEnabled ?? true) as boolean)
+                        }
+                        value={(s as any).premiumCustomWindows?.late?.start ?? "14:00"}
                         onChange={(e) =>
                           setS((p) => ({
                             ...p,
                             premiumCustomWindows: {
-                              ...(p.premiumCustomWindows ?? {
+                              ...(((p as any).premiumCustomWindows ?? {
+                                lateEnabled: true,
+                                nightEnabled: true,
                                 late: { start: "14:00", end: "22:00" },
                                 night: { start: "22:00", end: "06:00" },
-                              }),
+                              }) as any),
                               late: {
-                                ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
+                                ...(((p as any).premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }) as any),
                                 start: e.target.value,
                               },
                             },
@@ -553,18 +628,23 @@ export default function SettingsPage() {
                       <input
                         className={inputClass}
                         type="time"
-                        disabled={!pro}
-                        value={s.premiumCustomWindows?.late.end ?? "22:00"}
+                        disabled={
+                          !pro ||
+                          !(((s as any).premiumCustomWindows?.lateEnabled ?? true) as boolean)
+                        }
+                        value={(s as any).premiumCustomWindows?.late?.end ?? "22:00"}
                         onChange={(e) =>
                           setS((p) => ({
                             ...p,
                             premiumCustomWindows: {
-                              ...(p.premiumCustomWindows ?? {
+                              ...(((p as any).premiumCustomWindows ?? {
+                                lateEnabled: true,
+                                nightEnabled: true,
                                 late: { start: "14:00", end: "22:00" },
                                 night: { start: "22:00", end: "06:00" },
-                              }),
+                              }) as any),
                               late: {
-                                ...(p.premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }),
+                                ...(((p as any).premiumCustomWindows?.late ?? { start: "14:00", end: "22:00" }) as any),
                                 end: e.target.value,
                               },
                             },
@@ -573,7 +653,12 @@ export default function SettingsPage() {
                       />
                     </div>
 
-                    <div className="rounded-xl border p-3 dark:border-white/20">
+                    {/* Night card */}
+                    <div
+                      className={`rounded-xl border p-3 dark:border-white/20 ${
+                        (((s as any).premiumCustomWindows?.nightEnabled ?? true) ? "" : "opacity-50")
+                      }`}
+                    >
                       <div className="text-sm font-semibold mb-2">
                         Night window {!pro && <span className="text-xs opacity-70">(Pro 🔒)</span>}
                       </div>
@@ -582,18 +667,23 @@ export default function SettingsPage() {
                       <input
                         className={inputClass}
                         type="time"
-                        disabled={!pro}
-                        value={s.premiumCustomWindows?.night.start ?? "22:00"}
+                        disabled={
+                          !pro ||
+                          !(((s as any).premiumCustomWindows?.nightEnabled ?? true) as boolean)
+                        }
+                        value={(s as any).premiumCustomWindows?.night?.start ?? "22:00"}
                         onChange={(e) =>
                           setS((p) => ({
                             ...p,
                             premiumCustomWindows: {
-                              ...(p.premiumCustomWindows ?? {
+                              ...(((p as any).premiumCustomWindows ?? {
+                                lateEnabled: true,
+                                nightEnabled: true,
                                 late: { start: "14:00", end: "22:00" },
                                 night: { start: "22:00", end: "06:00" },
-                              }),
+                              }) as any),
                               night: {
-                                ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
+                                ...(((p as any).premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }) as any),
                                 start: e.target.value,
                               },
                             },
@@ -605,18 +695,23 @@ export default function SettingsPage() {
                       <input
                         className={inputClass}
                         type="time"
-                        disabled={!pro}
-                        value={s.premiumCustomWindows?.night.end ?? "06:00"}
+                        disabled={
+                          !pro ||
+                          !(((s as any).premiumCustomWindows?.nightEnabled ?? true) as boolean)
+                        }
+                        value={(s as any).premiumCustomWindows?.night?.end ?? "06:00"}
                         onChange={(e) =>
                           setS((p) => ({
                             ...p,
                             premiumCustomWindows: {
-                              ...(p.premiumCustomWindows ?? {
+                              ...(((p as any).premiumCustomWindows ?? {
+                                lateEnabled: true,
+                                nightEnabled: true,
                                 late: { start: "14:00", end: "22:00" },
                                 night: { start: "22:00", end: "06:00" },
-                              }),
+                              }) as any),
                               night: {
-                                ...(p.premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }),
+                                ...(((p as any).premiumCustomWindows?.night ?? { start: "22:00", end: "06:00" }) as any),
                                 end: e.target.value,
                               },
                             },
@@ -627,6 +722,10 @@ export default function SettingsPage() {
 
                     <p className="sm:col-span-2 text-xs text-gray-500 dark:text-gray-400">
                       Windows can cross midnight (e.g. 22:00 → 06:00).
+                    </p>
+
+                    <p className="sm:col-span-2 text-xs text-gray-500 dark:text-gray-400">
+                      Tip: If your job only has one premium window, disable the other toggle above.
                     </p>
                   </div>
                 </div>
@@ -796,27 +895,27 @@ export default function SettingsPage() {
             </div>
           </div>
 
-         <div className="mt-6 flex items-center gap-3 flex-wrap">
-  <button
-    onClick={save}
-    className="rounded-xl px-5 py-2 font-semibold bg-green-600 text-white hover:bg-green-700"
-  >
-    Save
-  </button>
+          <div className="mt-6 flex items-center gap-3 flex-wrap">
+            <button
+              onClick={save}
+              className="rounded-xl px-5 py-2 font-semibold bg-green-600 text-white hover:bg-green-700"
+            >
+              Save
+            </button>
 
-  {msg && (
-    <span className="text-sm text-green-700 dark:text-green-400 animate-fadeIn">
-      {msg}
-    </span>
-  )}
+            {msg && (
+              <span className="text-sm text-green-700 dark:text-green-400 animate-fadeIn">
+                {msg}
+              </span>
+            )}
 
-  <button
-    onClick={restore}
-    className="rounded-xl px-5 py-2 font-semibold bg-gray-300 text-gray-900 hover:bg-gray-400 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
-  >
-    Restore defaults
-  </button>
-</div>
+            <button
+              onClick={restore}
+              className="rounded-xl px-5 py-2 font-semibold bg-gray-300 text-gray-900 hover:bg-gray-400 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+            >
+              Restore defaults
+            </button>
+          </div>
         </div>
 
         <p className="mt-6 text-xs text-gray-500 dark:text-gray-400 text-center">

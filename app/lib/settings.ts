@@ -12,9 +12,13 @@ export type RateSnapshot = {
 
 export type PremiumMode = "preset" | "custom";
 
+/**
+ * Premium windows now support enabling/disabling each window independently.
+ * If enabled=false, start/end may be blank "".
+ */
 export type PremiumWindows = {
-  late: { start: string; end: string };
-  night: { start: string; end: string };
+  late: { enabled: boolean; start: string; end: string };   // start/end can be "" if disabled
+  night: { enabled: boolean; start: string; end: string };
 };
 
 export type Settings = {
@@ -55,8 +59,8 @@ const BASE_DEFAULT_RATE: RateSnapshot = {
 };
 
 const DEFAULT_CUSTOM_WINDOWS: PremiumWindows = {
-  late: { start: "14:00", end: "22:00" },
-  night: { start: "22:00", end: "06:00" },
+  late: { enabled: true, start: "14:00", end: "22:00" },
+  night: { enabled: true, start: "22:00", end: "06:00" },
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -114,6 +118,10 @@ function isValidHHMM(s: unknown): s is string {
   return typeof s === "string" && /^\d{2}:\d{2}$/.test(s);
 }
 
+function isBlankOrHHMM(s: unknown): s is string {
+  return typeof s === "string" && (s === "" || /^\d{2}:\d{2}$/.test(s));
+}
+
 /* ------------------------- premium settings normalize ------------------------- */
 
 function normalizePremiumMode(x: unknown): PremiumMode {
@@ -121,33 +129,46 @@ function normalizePremiumMode(x: unknown): PremiumMode {
 }
 
 function normalizePremiumPresetId(x: unknown): string {
-  return typeof x === "string" && x.trim()
-    ? x.trim()
-    : DEFAULT_SETTINGS.premiumPresetId;
+  return typeof x === "string" && x.trim() ? x.trim() : DEFAULT_SETTINGS.premiumPresetId;
 }
+
+/**
+ * Supports BOTH shapes:
+ * - New shape: { late: { enabled, start, end }, night: { enabled, start, end } }
+ * - Legacy shape: { late: { start, end }, night: { start, end } }  (assumes enabled=true)
+ */
+
 
 function normalizePremiumCustomWindows(x: unknown): PremiumWindows {
   const obj = x as any;
 
-  const lateStart = isValidHHMM(obj?.late?.start)
-    ? obj.late.start
-    : DEFAULT_CUSTOM_WINDOWS.late.start;
-  const lateEnd = isValidHHMM(obj?.late?.end)
-    ? obj.late.end
-    : DEFAULT_CUSTOM_WINDOWS.late.end;
+  // Legacy: if enabled missing, assume true
+  const lateEnabled = safeBool(obj?.late?.enabled, true);
+  const nightEnabled = safeBool(obj?.night?.enabled, true);
 
-  const nightStart = isValidHHMM(obj?.night?.start)
-    ? obj.night.start
-    : DEFAULT_CUSTOM_WINDOWS.night.start;
-  const nightEnd = isValidHHMM(obj?.night?.end)
-    ? obj.night.end
-    : DEFAULT_CUSTOM_WINDOWS.night.end;
+  // If enabled=false, allow blank start/end to stay blank (do NOT force defaults)
+  const lateStart = lateEnabled
+    ? (isValidHHMM(obj?.late?.start) ? obj.late.start : DEFAULT_CUSTOM_WINDOWS.late.start)
+    : (isBlankOrHHMM(obj?.late?.start) ? (obj?.late?.start ?? "") : "");
+
+  const lateEnd = lateEnabled
+    ? (isValidHHMM(obj?.late?.end) ? obj.late.end : DEFAULT_CUSTOM_WINDOWS.late.end)
+    : (isBlankOrHHMM(obj?.late?.end) ? (obj?.late?.end ?? "") : "");
+
+  const nightStart = nightEnabled
+    ? (isValidHHMM(obj?.night?.start) ? obj.night.start : DEFAULT_CUSTOM_WINDOWS.night.start)
+    : (isBlankOrHHMM(obj?.night?.start) ? (obj?.night?.start ?? "") : "");
+
+  const nightEnd = nightEnabled
+    ? (isValidHHMM(obj?.night?.end) ? obj.night.end : DEFAULT_CUSTOM_WINDOWS.night.end)
+    : (isBlankOrHHMM(obj?.night?.end) ? (obj?.night?.end ?? "") : "");
 
   return {
-    late: { start: lateStart, end: lateEnd },
-    night: { start: nightStart, end: nightEnd },
+    late: { enabled: !!lateEnabled, start: lateStart, end: lateEnd },
+    night: { enabled: !!nightEnabled, start: nightStart, end: nightEnd },
   };
 }
+
 
 function normalizeProtectPremiumsForLieuBH(x: unknown): boolean {
   return safeBool(x, DEFAULT_SETTINGS.protectPremiumsForLieuBH);
@@ -157,18 +178,8 @@ function normalizeProtectPremiumsForLieuBH(x: unknown): boolean {
 
 function normalizeTaxYearStart(x: unknown): { month: number; day: number } {
   const obj = x as any;
-  const month = clampInt(
-    obj?.month,
-    DEFAULT_SETTINGS.holidayTaxYearStart.month,
-    1,
-    12
-  );
-  const day = clampInt(
-    obj?.day,
-    DEFAULT_SETTINGS.holidayTaxYearStart.day,
-    1,
-    31
-  );
+  const month = clampInt(obj?.month, DEFAULT_SETTINGS.holidayTaxYearStart.month, 1, 12);
+  const day = clampInt(obj?.day, DEFAULT_SETTINGS.holidayTaxYearStart.day, 1, 31);
   return { month, day };
 }
 
@@ -201,11 +212,7 @@ function normalizeRates(rates: any[]): RateSnapshot[] {
   if (cleaned.length === 0) return [BASE_DEFAULT_RATE];
 
   cleaned.sort((a, b) =>
-    a.effectiveDate < b.effectiveDate
-      ? -1
-      : a.effectiveDate > b.effectiveDate
-        ? 1
-        : 0
+    a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0
   );
 
   // Deduplicate by effectiveDate (keep last)
@@ -249,30 +256,21 @@ function migrateIfLegacy(parsed: any): Settings {
 
   return {
     holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
-    weekStartsOn: clampWeekStartsOn(
-      parsed?.weekStartsOn,
-      DEFAULT_SETTINGS.weekStartsOn
-    ),
+    weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
     rates: normalizeRates([legacyRate]),
 
     premiumMode: normalizePremiumMode(parsed?.premiumMode),
     premiumPresetId: normalizePremiumPresetId(parsed?.premiumPresetId),
-    premiumCustomWindows: normalizePremiumCustomWindows(
-      parsed?.premiumCustomWindows
-    ),
+    premiumCustomWindows: normalizePremiumCustomWindows(parsed?.premiumCustomWindows),
 
     // ✅ new setting (default true if missing)
-    protectPremiumsForLieuBH: normalizeProtectPremiumsForLieuBH(
-      parsed?.protectPremiumsForLieuBH
-    ),
+    protectPremiumsForLieuBH: normalizeProtectPremiumsForLieuBH(parsed?.protectPremiumsForLieuBH),
 
     holidayStartBalanceHours: clampNonNeg(
       parsed?.holidayStartBalanceHours,
       DEFAULT_SETTINGS.holidayStartBalanceHours
     ),
-    holidayBalanceStartDateYMD: normalizeHolidayStartDate(
-      parsed?.holidayBalanceStartDateYMD
-    ),
+    holidayBalanceStartDateYMD: normalizeHolidayStartDate(parsed?.holidayBalanceStartDateYMD),
     holidayTaxYearStart: normalizeTaxYearStart(parsed?.holidayTaxYearStart),
   };
 }
@@ -280,30 +278,21 @@ function migrateIfLegacy(parsed: any): Settings {
 function normalizeSettingsShape(parsed: any): Settings {
   return {
     holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
-    weekStartsOn: clampWeekStartsOn(
-      parsed?.weekStartsOn,
-      DEFAULT_SETTINGS.weekStartsOn
-    ),
+    weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
     rates: normalizeRates(Array.isArray(parsed?.rates) ? parsed.rates : []),
 
     premiumMode: normalizePremiumMode(parsed?.premiumMode),
     premiumPresetId: normalizePremiumPresetId(parsed?.premiumPresetId),
-    premiumCustomWindows: normalizePremiumCustomWindows(
-      parsed?.premiumCustomWindows
-    ),
+    premiumCustomWindows: normalizePremiumCustomWindows(parsed?.premiumCustomWindows),
 
     // ✅ new setting (default true if missing)
-    protectPremiumsForLieuBH: normalizeProtectPremiumsForLieuBH(
-      parsed?.protectPremiumsForLieuBH
-    ),
+    protectPremiumsForLieuBH: normalizeProtectPremiumsForLieuBH(parsed?.protectPremiumsForLieuBH),
 
     holidayStartBalanceHours: clampNonNeg(
       parsed?.holidayStartBalanceHours,
       DEFAULT_SETTINGS.holidayStartBalanceHours
     ),
-    holidayBalanceStartDateYMD: normalizeHolidayStartDate(
-      parsed?.holidayBalanceStartDateYMD
-    ),
+    holidayBalanceStartDateYMD: normalizeHolidayStartDate(parsed?.holidayBalanceStartDateYMD),
     holidayTaxYearStart: normalizeTaxYearStart(parsed?.holidayTaxYearStart),
   };
 }

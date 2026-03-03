@@ -1,7 +1,7 @@
 // app/lib/engine/premiums.ts
-import type { Settings } from "../settings";
+import type { Settings, PremiumWindows as SettingsPremiumWindows } from "../settings";
 
-export type PremiumWindow = { start: string; end: string };
+export type PremiumWindow = { enabled: boolean; start: string; end: string };
 export type PremiumWindows = { late: PremiumWindow; night: PremiumWindow };
 
 export type PremiumPreset = {
@@ -16,24 +16,24 @@ export const PREMIUM_PRESETS: PremiumPreset[] = [
     id: "p1",
     label: "Late 14:00–22:00 • Night 22:00–06:00",
     windows: {
-      late: { start: "14:00", end: "22:00" },
-      night: { start: "22:00", end: "06:00" },
+      late: { enabled: true, start: "14:00", end: "22:00" },
+      night: { enabled: true, start: "22:00", end: "06:00" },
     },
   },
   {
     id: "p2",
     label: "Late 16:00–22:00 • Night 22:00–06:00",
     windows: {
-      late: { start: "16:00", end: "22:00" },
-      night: { start: "22:00", end: "06:00" },
+      late: { enabled: true, start: "16:00", end: "22:00" },
+      night: { enabled: true, start: "22:00", end: "06:00" },
     },
   },
   {
     id: "p3",
     label: "Late 18:00–00:00 • Night 00:00–06:00",
     windows: {
-      late: { start: "18:00", end: "00:00" },
-      night: { start: "00:00", end: "06:00" },
+      late: { enabled: true, start: "18:00", end: "00:00" },
+      night: { enabled: true, start: "00:00", end: "06:00" },
     },
   },
 ];
@@ -72,12 +72,12 @@ function overlap(sA: number, eA: number, sB: number, eB: number) {
 /**
  * Compute premium hours for a shift, based on configurable windows.
  * Handles shifts and windows that cross midnight.
+ *
+ * IMPORTANT: Each window can be disabled independently (enabled=false).
+ * If disabled OR invalid/blank times, that window contributes 0 hours,
+ * without affecting the other window.
  */
-export function computePremiumHours(
-  startTime: string,
-  endTime: string,
-  windows: PremiumWindows
-) {
+export function computePremiumHours(startTime: string, endTime: string, windows: PremiumWindows) {
   const s0 = toMinutes(startTime);
   const e0 = toMinutes(endTime);
   if (!Number.isFinite(s0) || !Number.isFinite(e0)) {
@@ -89,30 +89,40 @@ export function computePremiumHours(
   let e = e0;
   if (e <= s) e += 24 * 60;
 
-  const ls = toMinutes(windows.late.start);
-  const le = toMinutes(windows.late.end);
-  const ns = toMinutes(windows.night.start);
-  const ne = toMinutes(windows.night.end);
-
-  if (![ls, le, ns, ne].every(Number.isFinite)) {
-    return { lateHours: 0, nightHours: 0 };
-  }
-
-  const lateSegs = windowSegments(ls, le);
-  const nightSegs = windowSegments(ns, ne);
-
   let lateMin = 0;
   let nightMin = 0;
 
-  // Check previous day / same day / next day to catch midnight-crossing overlaps
-  for (const dayOffset of [-1, 0, 1]) {
-    const base = dayOffset * 24 * 60;
+  // --- Late window ---
+  if (windows.late?.enabled) {
+    const ls = toMinutes(windows.late.start);
+    const le = toMinutes(windows.late.end);
+    if (Number.isFinite(ls) && Number.isFinite(le)) {
+      const lateSegs = windowSegments(ls, le);
 
-    for (const seg of lateSegs) {
-      lateMin += overlap(s, e, base + seg.s, base + seg.e);
+      // Check previous day / same day / next day to catch midnight-crossing overlaps
+      for (const dayOffset of [-1, 0, 1]) {
+        const base = dayOffset * 24 * 60;
+        for (const seg of lateSegs) {
+          lateMin += overlap(s, e, base + seg.s, base + seg.e);
+        }
+      }
     }
-    for (const seg of nightSegs) {
-      nightMin += overlap(s, e, base + seg.s, base + seg.e);
+  }
+
+  // --- Night window ---
+  if (windows.night?.enabled) {
+    const ns = toMinutes(windows.night.start);
+    const ne = toMinutes(windows.night.end);
+    if (Number.isFinite(ns) && Number.isFinite(ne)) {
+      const nightSegs = windowSegments(ns, ne);
+
+      // Check previous day / same day / next day to catch midnight-crossing overlaps
+      for (const dayOffset of [-1, 0, 1]) {
+        const base = dayOffset * 24 * 60;
+        for (const seg of nightSegs) {
+          nightMin += overlap(s, e, base + seg.s, base + seg.e);
+        }
+      }
     }
   }
 
@@ -124,19 +134,33 @@ export function computePremiumHours(
 
 /**
  * Resolve windows from Settings (preset or custom).
- * Safe defaults if fields missing.
+ * - Presets always enable both windows.
+ * - Custom can enable/disable each window independently.
+ * - If legacy settings exist (no enabled flag), default enabled=true.
  */
 export function getPremiumWindows(settings: Settings): PremiumWindows {
   const mode = (settings as any)?.premiumMode ?? "preset";
   const presetId = (settings as any)?.premiumPresetId ?? "p1";
 
   if (mode === "custom") {
-    const c = (settings as any)?.premiumCustomWindows;
-    const safe: PremiumWindows = {
-      late: { start: c?.late?.start ?? "14:00", end: c?.late?.end ?? "22:00" },
-      night: { start: c?.night?.start ?? "22:00", end: c?.night?.end ?? "06:00" },
+    const c = ((settings as any)?.premiumCustomWindows ?? {}) as Partial<SettingsPremiumWindows>;
+
+    const lateEnabled = typeof c?.late?.enabled === "boolean" ? c.late.enabled : true;
+    const nightEnabled = typeof c?.night?.enabled === "boolean" ? c.night.enabled : true;
+
+    return {
+      late: {
+        enabled: lateEnabled,
+        // keep "" if user saved it; only default when undefined
+        start: c?.late?.start !== undefined ? c.late.start : "14:00",
+        end: c?.late?.end !== undefined ? c.late.end : "22:00",
+      },
+      night: {
+        enabled: nightEnabled,
+        start: c?.night?.start !== undefined ? c.night.start : "22:00",
+        end: c?.night?.end !== undefined ? c.night.end : "06:00",
+      },
     };
-    return safe;
   }
 
   const preset = PREMIUM_PRESETS.find((p) => p.id === presetId) ?? PREMIUM_PRESETS[0];
