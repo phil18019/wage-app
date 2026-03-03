@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Landing() {
   return (
-    <main className="min-h-screen flex flex-col items-center px-6 pt-4 sm:pt-10 pb-12">
+    <main className="min-h-[100dvh] flex flex-col items-center px-6 pt-4 sm:pt-10 pb-12">
       {/* Main content */}
       <div className="w-full max-w-xl text-center">
         <img

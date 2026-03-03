@@ -924,7 +924,7 @@ const prem = useMemo(() => {
   /* ------------------------------ render ------------------------------ */
 
   return (
-    <main className="min-h-screen p-4 sm:p-6 max-w-4xl mx-auto text-[var(--foreground)] pb-28">
+    <main className="min-h-[100dvh] p-4 sm:p-6 max-w-4xl mx-auto text-[var(--foreground)] pb-28">
       {/* Top mini header */}
       <header className="mb-4">
         <div className="flex items-center justify-between gap-3">

@@ -17,7 +17,7 @@ export default async function Terms({
     from === "landing" ? "/" : from === "settings" ? "/settings" : "/app";
 
   return (
-    <main className="min-h-screen max-w-3xl mx-auto p-6 space-y-6 text-sm">
+    <main className="min-h-[100dvh] max-w-3xl mx-auto p-6 space-y-6 text-sm">
       <BackButton to={backTo} />
 
       <h1 className="text-2xl font-bold">Terms &amp; Conditions</h1>

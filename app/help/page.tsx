@@ -80,7 +80,7 @@ export default function HelpPage() {
   const router = useRouter();
 
   return (
-    <main className="min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 p-4 sm:p-6">
+   <main className="min-h-[100dvh] bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 p-4 sm:p-6">
       <div className="mx-auto max-w-3xl flex flex-col">
 
         <button

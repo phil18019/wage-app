@@ -274,7 +274,7 @@ export default function SettingsPage() {
   const labelClass = "text-sm font-medium text-gray-700 dark:text-gray-200";
 
   return (
-   <main className="min-h-screen pb-28 bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+  <main className="min-h-[100dvh] pb-28 bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <div className="mx-auto max-w-3xl flex flex-col">
         <button
           onClick={() => router.push("/app")}

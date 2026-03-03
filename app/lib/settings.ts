@@ -50,7 +50,7 @@ const BASE_DEFAULT_RATE: RateSnapshot = {
   otAddOn: 6.7,
   latePremium: 2.26,
   nightPremium: 3.45,
-  otThreshold: 160,
+  otThreshold: 40,
   doubleRate: 2,
 };
 
