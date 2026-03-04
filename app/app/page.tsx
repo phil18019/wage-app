@@ -924,27 +924,51 @@ const prem = useMemo(() => {
   /* ------------------------------ render ------------------------------ */
 
   return (
-    <main className="min-h-[100dvh] p-4 sm:p-6 max-w-4xl mx-auto text-[var(--foreground)] pb-28">
-      {/* Top mini header */}
-      <header className="mb-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-xs text-gray-600 dark:text-white/60 truncate">
-              v{APP_VERSION} • Created by Phil Crompton
-            </div>
-            <div className="mt-1">
-              {pro ? (
-                <span className="inline-flex items-center gap-2 rounded-full bg-green-100 text-green-900 px-3 py-1 text-xs font-semibold">
-                  Pro unlocked ✅
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2 rounded-full bg-yellow-100 text-yellow-900 px-3 py-1 text-xs font-semibold">
-                  Free version — Pro locked 🔒
-                </span>
-              )}
-            </div>
-          </div>
+   <main className="min-h-[100dvh] p-4 sm:p-6 max-w-4xl mx-auto text-[var(--foreground)] pb-28">
+  {/* App title */}
+{/* App title */}
+<div className="mb-3 flex justify-center">
+  <h1 className="text-3xl font-extrabold tracking-tight leading-none">
 
+    <span className="text-black dark:text-white">
+      Pay
+    </span>
+
+    <span className="text-red-600">
+      C
+    </span>
+
+    <span className="text-yellow-500">
+      o
+    </span>
+
+    <span className="text-red-600">
+      re
+    </span>
+
+  </h1>
+</div>
+
+  {/* Top mini header */}
+  <header className="mb-4">
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-xs text-gray-600 dark:text-white/60 truncate">
+          v{APP_VERSION} • Created by Phil Crompton
+        </div>
+
+        <div className="mt-1">
+          {pro ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-green-100 text-green-900 px-3 py-1 text-xs font-semibold">
+              Pro unlocked ✅
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2 rounded-full bg-yellow-100 text-yellow-900 px-3 py-1 text-xs font-semibold">
+              Free version — Pro locked 🔒
+            </span>
+          )}
+        </div>
+      </div>
           <nav className="flex items-center gap-2 shrink-0">
             <Link
               href="/help"
