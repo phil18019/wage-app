@@ -283,7 +283,7 @@ export default function SettingsPage() {
           ← Back
         </button>
 
-        <div className="rounded-2xl border bg-white p-5 shadow-sm dark:bg-gray-800 dark:border-white/20">
+        <div className="rounded-2xl overflow-hidden border bg-white p-5 shadow-sm dark:bg-gray-800 dark:border-white/20">
           <div className="flex items-center justify-between gap-3 mb-4">
             <h1 className="text-2xl font-bold">Settings</h1>
           </div>
