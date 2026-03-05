@@ -270,7 +270,7 @@ export default function SettingsPage() {
   };
 
   const inputClass =
-    "mt-2 w-full rounded-xl border px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100 dark:border-white/20";
+  "mt-2 w-full min-w-0 max-w-full box-border rounded-xl border px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100 dark:border-white/20";
   const labelClass = "text-sm font-medium text-gray-700 dark:text-gray-200";
 
   return (
