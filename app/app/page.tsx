@@ -911,8 +911,8 @@ export default function Home() {
 
   /* ------------------------------ styles ------------------------------ */
 
-  const card =
-    "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow dark:bg-white/10 dark:border-white/10";
+ const card =
+  "rounded-2xl bg-gray-100 border border-gray-200 p-4 shadow overflow-hidden dark:bg-white/10 dark:border-white/10";
   const label = "text-sm text-gray-700 dark:text-white/70";
 
   // ✅ important for mobile: prevents time inputs/selects from forcing overflow
