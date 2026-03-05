@@ -42,7 +42,7 @@ type ShiftRow = {
 
 const STORAGE_KEY_MONTH = "wagecheck.month.v1";
 const STORAGE_KEY_ALLTIME = "wagecheck.alltime.v1";
-const APP_VERSION = "1.0.1-test";
+const APP_VERSION = "1.0.1-why";
 
 /* ------------------------- small utilities ------------------------- */
 
