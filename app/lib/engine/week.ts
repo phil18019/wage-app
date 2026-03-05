@@ -301,6 +301,7 @@ function emptyWeek(weekId: string): WeekTotals {
  * - OT can only be paid from worked hours excluding Double subset
  * - holidayRate stays from Settings (not history)
  */
+
 export function computeWeeklyTotals(
   rows: ShiftRow[],
   settings: Settings,
@@ -322,10 +323,23 @@ export function computeWeeklyTotals(
 
   const out: WeekTotals[] = [];
 
+  type RowCalc = {
+    r: ShiftRow;
+    b: ReturnType<typeof computeRowBreakdown>;
+    // pay inputs for that shift date
+    base: number;
+    otAdd: number;
+    lateAdd: number;
+    nightAdd: number;
+    doubleRate: number;
+    // worked that can be std/ot (excludes double)
+    workedAvail: number;
+  };
+
   for (const weekId of weekIds) {
     const weekRows = (byWeek.get(weekId) ?? []).slice();
 
-    // sort chronological inside the week for correct OT allocation
+    // sort chronological inside the week
     weekRows.sort((a, b) => {
       const da = (a.date || "").trim();
       const db = (b.date || "").trim();
@@ -338,13 +352,13 @@ export function computeWeeklyTotals(
 
     const tot = emptyWeek(weekId);
 
-    // ✅ threshold for the whole week = rate effective at week start
+    // threshold for the whole week = rate effective at week start
     const weekRate = getRateForDate(weekId);
     const otThreshold = clampNonNeg(weekRate.otThreshold);
 
-    let qualifyingSoFar = 0;
-    let otSoFar = 0;
+    const calcs: RowCalc[] = [];
 
+    // ---- PASS 1: compute breakdowns, premiums, and non-OT pay parts ----
     for (const r of weekRows) {
       const b = computeRowBreakdown(r, settings);
 
@@ -370,25 +384,8 @@ export function computeWeeklyTotals(
       const nightAdd = clampNonNeg(rate.nightPremium);
       const doubleRate = clampNonNeg(rate.doubleRate);
 
-      // qualifying for OT trigger (double is subset of worked)
-      const qualifyingThisRow = clampNonNeg(b.worked + b.hol + b.lieu + b.bankHol);
-      qualifyingSoFar = round2(qualifyingSoFar + qualifyingThisRow);
-
-      const totalOTShouldBeSoFar = round2(Math.max(0, qualifyingSoFar - otThreshold));
-      let otDelta = round2(Math.max(0, totalOTShouldBeSoFar - otSoFar));
-
-      // OT can only come from worked hours not already paid as Double
-      const workedAvailable = round2(Math.max(0, b.worked - b.dbl));
-      if (otDelta > workedAvailable) otDelta = workedAvailable;
-
-      const stdRow = round2(Math.max(0, workedAvailable - otDelta));
-      otSoFar = round2(otSoFar + otDelta);
-
-      // pay
-      tot.stdPay += round2(stdRow * base);
-      tot.otPay += round2(otDelta * (base + otAdd));
+      // Non-OT dependent pay parts
       tot.sickPay += round2(b.sick * base);
-
       tot.lateAddPay += round2(b.late * lateAdd);
       tot.nightAddPay += round2(b.night * nightAdd);
 
@@ -399,14 +396,72 @@ export function computeWeeklyTotals(
       // holidayRate is NOT in history (intentionally)
       tot.holPay += round2(b.hol * holRate);
 
-      // std/ot buckets
-      tot.std += stdRow;
-      tot.ot += otDelta;
+      const workedAvail = round2(Math.max(0, b.worked - b.dbl));
 
-      tot.qualifying = qualifyingSoFar;
+      calcs.push({ r, b, base, otAdd, lateAdd, nightAdd, doubleRate, workedAvail });
     }
 
-    // round hour buckets
+    // ---- WEEK-LEVEL qualifying / OT / STD ----
+    // Your intended rule: OT triggers from qualifying
+    const qualifyingWeek = round2(Math.max(0, tot.worked + tot.hol + tot.lieu + tot.bankHol));
+    const otHoursShouldBe = round2(Math.max(0, qualifyingWeek - otThreshold));
+
+    // OT can only be PAID from worked hours (excluding double)
+    const workedAvailWeek = round2(
+      calcs.reduce((sum, x) => sum + x.workedAvail, 0)
+    );
+
+    const otPaidWeek = round2(Math.min(otHoursShouldBe, workedAvailWeek));
+    const stdPaidWeek = round2(Math.max(0, workedAvailWeek - otPaidWeek));
+
+    tot.qualifying = qualifyingWeek;
+    tot.ot = otPaidWeek;
+    tot.std = stdPaidWeek;
+
+    // ---- PASS 2: allocate OT pay to the LAST worked hours of the week ----
+    // This prevents LIEU/BH mid-week from "stealing" OT allocation timing.
+    let remainingOT = otPaidWeek;
+
+    for (let i = calcs.length - 1; i >= 0; i--) {
+      const c = calcs[i];
+      if (remainingOT <= 0) break;
+
+      const takeOT = round2(Math.min(c.workedAvail, remainingOT));
+      remainingOT = round2(remainingOT - takeOT);
+
+      // OT pay for these hours
+      tot.otPay += round2(takeOT * (c.base + c.otAdd));
+      // remaining hours in this row are std
+      const stdHere = round2(c.workedAvail - takeOT);
+      tot.stdPay += round2(stdHere * c.base);
+    }
+
+    // Any rows not touched by OT allocation were fully std
+    // (only needed if remainingOT exhausted early; loop above already std-paid the rest per row)
+    // BUT we already std-paid inside the loop for every row that got considered.
+    // We still need to std-pay rows BEFORE the OT allocation starts.
+    // So do a simple check: if otPaidWeek < workedAvailWeek, some hours were std-paid already in OT loop,
+    // but rows earlier than the last OT allocation haven't been std-paid yet.
+    // Easiest: recompute stdPay from scratch based on allocation.
+
+    // Rebuild std/ot pay cleanly (to avoid double counting)
+    tot.stdPay = 0;
+    tot.otPay = 0;
+
+    remainingOT = otPaidWeek;
+
+    for (let i = calcs.length - 1; i >= 0; i--) {
+      const c = calcs[i];
+      const takeOT = remainingOT > 0 ? round2(Math.min(c.workedAvail, remainingOT)) : 0;
+      remainingOT = round2(remainingOT - takeOT);
+
+      const stdHere = round2(c.workedAvail - takeOT);
+
+      tot.otPay += round2(takeOT * (c.base + c.otAdd));
+      tot.stdPay += round2(stdHere * c.base);
+    }
+
+    // ---- round hour buckets ----
     tot.worked = round2(tot.worked);
     tot.qualifying = round2(tot.qualifying);
     tot.std = round2(tot.std);
@@ -421,7 +476,7 @@ export function computeWeeklyTotals(
     tot.unpaidPart = round2(tot.unpaidPart);
     tot.sick = round2(tot.sick);
 
-    // round pay
+    // ---- round pay ----
     tot.stdPay = round2(tot.stdPay);
     tot.otPay = round2(tot.otPay);
     tot.sickPay = round2(tot.sickPay);
