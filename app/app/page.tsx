@@ -916,8 +916,8 @@ export default function Home() {
   const label = "text-sm text-gray-700 dark:text-white/70";
 
   // ✅ important for mobile: prevents time inputs/selects from forcing overflow
-  const input =
-    "mt-1 w-full min-w-0 max-w-full rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
+ const input =
+  "mt-1 w-full min-w-0 max-w-full box-border rounded-xl bg-white border border-gray-300 px-3 py-2 text-gray-900 dark:bg-white/10 dark:border-white/10 dark:text-white";
 
   function tabButtonClass(isActive: boolean, locked?: boolean) {
     return [
