@@ -417,6 +417,10 @@ export function computeWeeklyTotals(
     tot.qualifying = qualifyingWeek;
     tot.ot = otPaidWeek;
     tot.std = stdPaidWeek;
+    // ✅ Option A: enforce displayed STD + OT == payable worked (worked minus double)
+const payableWorkedWeek = round2(Math.max(0, tot.worked - tot.dbl));
+tot.ot = round2(Math.min(tot.ot, payableWorkedWeek)); // safety clamp
+tot.std = round2(Math.max(0, payableWorkedWeek - tot.ot));
 
     // ---- PASS 2: allocate OT pay to the LAST worked hours of the week ----
     // This prevents LIEU/BH mid-week from "stealing" OT allocation timing.
