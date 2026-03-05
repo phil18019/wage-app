@@ -461,33 +461,33 @@ export default function Home() {
   }, []);
 
   // Re-sync settings when returning from /settings (fixes Shift tab using stale checkbox value)
-useEffect(() => {
-  const syncSettings = () => {
-    try {
-      setSettings(getSettings());
-    } catch {
-      setSettings(DEFAULT_SETTINGS);
-    }
-  };
+  useEffect(() => {
+    const syncSettings = () => {
+      try {
+        setSettings(getSettings());
+      } catch {
+        setSettings(DEFAULT_SETTINGS);
+      }
+    };
 
-  window.addEventListener("focus", syncSettings);
+    window.addEventListener("focus", syncSettings);
 
-  const onVis = () => {
-    if (!document.hidden) syncSettings();
-  };
-  document.addEventListener("visibilitychange", onVis);
+    const onVis = () => {
+      if (!document.hidden) syncSettings();
+    };
+    document.addEventListener("visibilitychange", onVis);
 
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === SETTINGS_KEY) syncSettings();
-  };
-  window.addEventListener("storage", onStorage);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SETTINGS_KEY) syncSettings();
+    };
+    window.addEventListener("storage", onStorage);
 
-  return () => {
-    window.removeEventListener("focus", syncSettings);
-    document.removeEventListener("visibilitychange", onVis);
-    window.removeEventListener("storage", onStorage);
-  };
-}, []);
+    return () => {
+      window.removeEventListener("focus", syncSettings);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   // keep dropdown selection valid
   useEffect(() => {
@@ -523,105 +523,113 @@ useEffect(() => {
   const sickConflict = Number(sickHours) > 0 && (startTime !== "" || endTime !== "");
 
   const workedHoursRaw = useMemo(
-  () => clampNonNeg(computeWorkedHours(startTime, endTime)),
-  [startTime, endTime]
-);
+    () => clampNonNeg(computeWorkedHours(startTime, endTime)),
+    [startTime, endTime]
+  );
 
-// ✅ What the UI should show as "Worked hours" on Shift tab
-// Full LIEU/BH/HOL/Unpaid = not physically worked (even if times entered)
-const workedHours = useMemo(() => {
-  const fullHol = holidayFlag === "Y";
-  const fullUnpaid = unpaidFlag === "Y";
-  const fullLieu = lieuFlag === "Y";
-  const fullBH = bankHolFlag === "Y";
-  return fullHol || fullUnpaid || fullLieu || fullBH ? 0 : workedHoursRaw;
-}, [workedHoursRaw, holidayFlag, unpaidFlag, lieuFlag, bankHolFlag]);
+  // ✅ What the UI should show as "Worked hours" on Shift tab
+  // Full LIEU/BH/HOL/Unpaid = not physically worked (even if times entered)
+  const workedHours = useMemo(() => {
+    const fullHol = holidayFlag === "Y";
+    const fullUnpaid = unpaidFlag === "Y";
+    const fullLieu = lieuFlag === "Y";
+    const fullBH = bankHolFlag === "Y";
+    return fullHol || fullUnpaid || fullLieu || fullBH ? 0 : workedHoursRaw;
+  }, [workedHoursRaw, holidayFlag, unpaidFlag, lieuFlag, bankHolFlag]);
 
   // ✅ Shift-tab premiums now match week/month rules:
-// - With checkbox OFF: LIEU/BH do NOT protect premiums AND premiums only count when physically worked.
-// - Full LIEU/BH/HOL/Unpaid => workedPhysical=0, so premiums must be 0.
-const prem = useMemo(() => {
-  const sh = clampNonNeg(Number(scheduledHours) || 0);
-  const wh = workedHoursRaw; // raw worked from times (may be >0 even on Full LIEU)
-  const workedPhysical =
-    holidayFlag === "Y" || unpaidFlag === "Y" || lieuFlag === "Y" || bankHolFlag === "Y"
-      ? 0
-      : wh;
+  // - With checkbox OFF: LIEU/BH do NOT protect premiums AND premiums only count when physically worked.
+  // - Full LIEU/BH/HOL/Unpaid => workedPhysical=0, so premiums must be 0.
+  const prem = useMemo(() => {
+    const sh = clampNonNeg(Number(scheduledHours) || 0);
+    const wh = workedHoursRaw; // raw worked from times (may be >0 even on Full LIEU)
+    const workedPhysical =
+      holidayFlag === "Y" || unpaidFlag === "Y" || lieuFlag === "Y" || bankHolFlag === "Y"
+        ? 0
+        : wh;
 
-  const fullHol = holidayFlag === "Y";
-  const fullUnpaid = unpaidFlag === "Y";
-  const premiumsBlocked = fullHol || fullUnpaid;
+    const fullHol = holidayFlag === "Y";
+    const fullUnpaid = unpaidFlag === "Y";
+    const premiumsBlocked = fullHol || fullUnpaid;
 
-  const protectLieuBH =
-    (settings as any)?.protectPremiumsForLieuBH === undefined
-      ? true
-      : Boolean((settings as any)?.protectPremiumsForLieuBH);
+    const protectLieuBH =
+      (settings as any)?.protectPremiumsForLieuBH === undefined
+        ? true
+        : Boolean((settings as any)?.protectPremiumsForLieuBH);
 
-  const hasLieuOrBH = lieuFlag !== "" || bankHolFlag !== "";
-  const hasDouble = doubleFlag !== "";
+    const hasLieuOrBH = lieuFlag !== "" || bankHolFlag !== "";
+    const hasDouble = doubleFlag !== "";
 
-  if (premiumsBlocked || !startTime) return { lateHours: 0, nightHours: 0 };
+    if (premiumsBlocked || !startTime) return { lateHours: 0, nightHours: 0 };
 
-  const hasEnd = (endTime || "").trim() !== "";
+    const hasEnd = (endTime || "").trim() !== "";
 
-  const normalPremEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
-  const scheduledPremEnd = sh > 0 ? addHoursToTime(startTime, sh) : normalPremEnd;
+    const normalPremEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
+    const scheduledPremEnd = sh > 0 ? addHoursToTime(startTime, sh) : normalPremEnd;
 
-  let premEnd = normalPremEnd;
+    let premEnd = normalPremEnd;
 
-  // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
-  if (hasDouble) {
-    premEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
-  }
-  // LIEU/BH: protect to scheduled window only if toggle ON
-  else if (hasLieuOrBH && protectLieuBH) {
-    premEnd = scheduledPremEnd;
-  }
-  // Normal (or LIEU/BH with protection OFF)
-  else {
-    premEnd = normalPremEnd;
-  }
+    // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
+    if (hasDouble) {
+      premEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
+    }
+    // LIEU/BH: protect to scheduled window only if toggle ON
+    else if (hasLieuOrBH && protectLieuBH) {
+      premEnd = scheduledPremEnd;
+    }
+    // Normal (or LIEU/BH with protection OFF)
+    else {
+      premEnd = normalPremEnd;
+    }
 
-  const p = computePremiumHours(startTime, premEnd, premiumWindows);
+    const p = computePremiumHours(startTime, premEnd, premiumWindows);
 
-  // Premiums count if:
-  // - Protected scenario (Double always; LIEU/BH only when toggle ON), OR
-  // - There was physically worked time
-  const premiumsProtected = hasDouble || (hasLieuOrBH && protectLieuBH);
+    // Premiums count if:
+    // - Protected scenario (Double always; LIEU/BH only when toggle ON), OR
+    // - There was physically worked time
+    const premiumsProtected = hasDouble || (hasLieuOrBH && protectLieuBH);
 
-  if (premiumsProtected || workedPhysical > 0) return p;
+    if (premiumsProtected || workedPhysical > 0) return p;
 
-  return { lateHours: 0, nightHours: 0 };
-}, [
-  startTime,
-  endTime,
-  scheduledHours,
-  holidayFlag,
-  unpaidFlag,
-  lieuFlag,
-  bankHolFlag,
-  doubleFlag,
-  premiumWindows,
-  settings,
-  workedHoursRaw,
-]);
+    return { lateHours: 0, nightHours: 0 };
+  }, [
+    startTime,
+    endTime,
+    scheduledHours,
+    holidayFlag,
+    unpaidFlag,
+    lieuFlag,
+    bankHolFlag,
+    doubleFlag,
+    premiumWindows,
+    settings,
+    workedHoursRaw,
+  ]);
 
   const month = useMemo(() => computeMonthTotals(rows as any, settings), [rows, settings]);
 
+
+
   const holidayBal = useMemo(() => {
     try {
-      return computeHolidayBalance(rows as any, settings as any);
+
+      const savedRows = (savedMonths ?? []).reduce((acc: any[], m: any) => {
+        return acc.concat(m.rows ?? m.shifts ?? []);
+      }, []);
+
+      const allRows = [...(rows ?? []), ...savedRows];
+
+      return computeHolidayBalance(allRows as any, settings as any);
+
     } catch {
       return null;
     }
-  }, [rows, settings]);
-
+  }, [rows, savedMonths, settings]);
   const weeks = useMemo(
     () => computeWeeklyTotals(rows as any, settings, weekStartsOn),
     [rows, settings, weekStartsOn]
   );
 
-  // ✅ OT threshold display (rate-history aware, SSR-safe)
   const otThresholdDisplay = useMemo(() => {
     try {
       return Number(rateForDateFromSettings(settings, date)?.otThreshold ?? 0);
@@ -741,9 +749,9 @@ const prem = useMemo(() => {
 
     const ok = confirm(
       "Save this month as a history snapshot?\n\n" +
-        "This locks the totals for this period.\n" +
-        "Future edits to shifts will NOT update this saved month.\n\n" +
-        "If you need to change it later, delete the saved month and save again."
+      "This locks the totals for this period.\n" +
+      "Future edits to shifts will NOT update this saved month.\n\n" +
+      "If you need to change it later, delete the saved month and save again."
     );
     if (!ok) return;
 
@@ -924,768 +932,771 @@ const prem = useMemo(() => {
   /* ------------------------------ render ------------------------------ */
 
   return (
-   <main className="min-h-[100dvh] p-4 sm:p-6 max-w-4xl mx-auto text-[var(--foreground)] pb-28">
-  {/* App title */}
-{/* App title */}
-<div className="mb-3 flex justify-center">
-  <h1 className="text-3xl font-extrabold tracking-tight leading-none">
+    <div className="h-[100dvh] overflow-hidden text-[var(--foreground)]">
+      <div className="mx-auto max-w-4xl p-4 sm:p-6 h-full flex flex-col">
+        {/* App title */}
+        {/* App title */}
+        <div className="mb-3 flex justify-center">
+          <h1 className="text-3xl font-extrabold tracking-tight leading-none">
 
-    <span className="text-black dark:text-white">
-      Pay
-    </span>
-
-    <span className="text-red-600">
-      C
-    </span>
-
-    <span className="text-yellow-500">
-      o
-    </span>
-
-    <span className="text-red-600">
-      re
-    </span>
-
-  </h1>
-</div>
-
-  {/* Top mini header */}
-  <header className="mb-4">
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="text-xs text-gray-600 dark:text-white/60 truncate">
-          v{APP_VERSION} • Created by Phil Crompton
-        </div>
-
-        <div className="mt-1">
-          {pro ? (
-            <span className="inline-flex items-center gap-2 rounded-full bg-green-100 text-green-900 px-3 py-1 text-xs font-semibold">
-              Pro unlocked ✅
+            <span className="text-black dark:text-white">
+              Pay
             </span>
-          ) : (
-            <span className="inline-flex items-center gap-2 rounded-full bg-yellow-100 text-yellow-900 px-3 py-1 text-xs font-semibold">
-              Free version — Pro locked 🔒
+
+            <span className="text-red-600">
+              C
             </span>
-          )}
+
+            <span className="text-yellow-500">
+              o
+            </span>
+
+            <span className="text-red-600">
+              re
+            </span>
+
+          </h1>
         </div>
-      </div>
-          <nav className="flex items-center gap-2 shrink-0">
-            <Link
-              href="/help"
-              className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-            >
-              Help
-            </Link>
-            <Link
-              href="/settings"
-              className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-            >
-              Settings
-            </Link>
-          </nav>
-        </div>
-      </header>
 
-      {/* -------------------- SHIFT TAB -------------------- */}
-      {activeTab === "shift" && (
-        <div className={card}>
-          <div className="text-lg font-semibold mb-3">This shift</div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Top mini header */}
+        <header className="mb-4">
+          <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className={label}>Date</div>
-              <input
-                type="date"
-                className={input}
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </div>
+              <div className="text-xs text-gray-600 dark:text-white/60 truncate">
+                v{APP_VERSION} • Created by Phil Crompton
+              </div>
 
-            <div className="min-w-0">
-              <div className={label}>Scheduled hours</div>
-              <input
-                className={input}
-                value={scheduledHours}
-                onChange={(e) => setScheduledHours(e.target.value)}
-                placeholder="e.g. 10"
-                inputMode="decimal"
-              />
+              <div className="mt-1">
+                {pro ? (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-green-100 text-green-900 px-3 py-1 text-xs font-semibold">
+                    Pro unlocked ✅
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-yellow-100 text-yellow-900 px-3 py-1 text-xs font-semibold">
+                    Free version — Pro locked 🔒
+                  </span>
+                )}
+              </div>
             </div>
-
-            <div className="min-w-0">
-              <div className={label}>Start</div>
-              <input
-                type="time"
-                step="60"
-                className={input}
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-
-            <div className="min-w-0">
-              <div className={label}>Finish</div>
-              <input
-                type="time"
-                step="60"
-                className={input}
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
-
-            <div className="min-w-0 sm:col-span-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setStartTime("");
-                  setEndTime("");
-                }}
-                className="mt-1 w-full text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+            <nav className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/help"
+                className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
               >
-                Clear start / finish times
-              </button>
-            </div>
-
-            {/* Flags */}
-            <div className="min-w-0">
-              <div className={label}>Holiday</div>
-              <select
-                className={input}
-                value={holidayFlag}
-                onChange={(e) => setHolidayFlag(e.target.value as Flag)}
+                Help
+              </Link>
+              <Link
+                href="/settings"
+                className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
               >
-                <option value="">-</option>
-                <option value="Y">Full</option>
-                <option value="P">Part</option>
-              </select>
+                Settings
+              </Link>
+            </nav>
+          </div>
+        </header>
+        <div className="flex-1 min-h-0 overflow-y-auto pb-28">
+
+        {/* -------------------- SHIFT TAB -------------------- */}
+        {activeTab === "shift" && (
+          <div className={card}>
+            <div className="text-lg font-semibold mb-3">This shift</div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="min-w-0">
+                <div className={label}>Date</div>
+                <input
+                  type="date"
+                  className={input}
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                />
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>Scheduled hours</div>
+                <input
+                  className={input}
+                  value={scheduledHours}
+                  onChange={(e) => setScheduledHours(e.target.value)}
+                  placeholder="e.g. 10"
+                  inputMode="decimal"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>Start</div>
+                <input
+                  type="time"
+                  step="60"
+                  className={input}
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>Finish</div>
+                <input
+                  type="time"
+                  step="60"
+                  className={input}
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </div>
+
+              <div className="min-w-0 sm:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartTime("");
+                    setEndTime("");
+                  }}
+                  className="mt-1 w-full text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+                >
+                  Clear start / finish times
+                </button>
+              </div>
+
+              {/* Flags */}
+              <div className="min-w-0">
+                <div className={label}>Holiday</div>
+                <select
+                  className={input}
+                  value={holidayFlag}
+                  onChange={(e) => setHolidayFlag(e.target.value as Flag)}
+                >
+                  <option value="">-</option>
+                  <option value="Y">Full</option>
+                  <option value="P">Part</option>
+                </select>
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>Unpaid</div>
+                <select
+                  className={input}
+                  value={unpaidFlag}
+                  onChange={(e) => setUnpaidFlag(e.target.value as Flag)}
+                >
+                  <option value="">-</option>
+                  <option value="Y">Full</option>
+                  <option value="P">Part</option>
+                </select>
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>LIEU</div>
+                <select
+                  className={input}
+                  value={lieuFlag}
+                  onChange={(e) => setLieuFlag(e.target.value as Flag)}
+                >
+                  <option value="">-</option>
+                  <option value="Y">Full</option>
+                  <option value="P">Part</option>
+                </select>
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>BH</div>
+                <select
+                  className={input}
+                  value={bankHolFlag}
+                  onChange={(e) => setBankHolFlag(e.target.value as Flag)}
+                >
+                  <option value="">-</option>
+                  <option value="Y">Full</option>
+                  <option value="P">Part</option>
+                </select>
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>Double</div>
+                <select
+                  className={input}
+                  value={doubleFlag}
+                  onChange={(e) => setDoubleFlag(e.target.value as Flag)}
+                >
+                  <option value="">-</option>
+                  <option value="Y">Full</option>
+                  <option value="P">Part</option>
+                </select>
+              </div>
+
+              <div className="min-w-0">
+                <div className={label}>Sick hours</div>
+                <input
+                  className={input}
+                  value={sickHours}
+                  onChange={(e) => setSickHours(e.target.value)}
+                  placeholder="0"
+                  inputMode="decimal"
+                />
+
+                {sickConflict && (
+                  <div className="mt-2 rounded-xl bg-red-100 text-red-800 px-3 py-2 text-sm font-medium">
+                    Start &amp; finish times must be removed when sick hours are entered
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="min-w-0">
-              <div className={label}>Unpaid</div>
-              <select
-                className={input}
-                value={unpaidFlag}
-                onChange={(e) => setUnpaidFlag(e.target.value as Flag)}
-              >
-                <option value="">-</option>
-                <option value="Y">Full</option>
-                <option value="P">Part</option>
-              </select>
-            </div>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
+                <div className="text-sm text-gray-700 dark:text-white/70">Worked hours</div>
+                <div className="text-xl font-bold text-gray-900 dark:text-white">{workedHours}</div>
+              </div>
 
-            <div className="min-w-0">
-              <div className={label}>LIEU</div>
-              <select
-                className={input}
-                value={lieuFlag}
-                onChange={(e) => setLieuFlag(e.target.value as Flag)}
-              >
-                <option value="">-</option>
-                <option value="Y">Full</option>
-                <option value="P">Part</option>
-              </select>
-            </div>
-
-            <div className="min-w-0">
-              <div className={label}>BH</div>
-              <select
-                className={input}
-                value={bankHolFlag}
-                onChange={(e) => setBankHolFlag(e.target.value as Flag)}
-              >
-                <option value="">-</option>
-                <option value="Y">Full</option>
-                <option value="P">Part</option>
-              </select>
-            </div>
-
-            <div className="min-w-0">
-              <div className={label}>Double</div>
-              <select
-                className={input}
-                value={doubleFlag}
-                onChange={(e) => setDoubleFlag(e.target.value as Flag)}
-              >
-                <option value="">-</option>
-                <option value="Y">Full</option>
-                <option value="P">Part</option>
-              </select>
-            </div>
-
-            <div className="min-w-0">
-              <div className={label}>Sick hours</div>
-              <input
-                className={input}
-                value={sickHours}
-                onChange={(e) => setSickHours(e.target.value)}
-                placeholder="0"
-                inputMode="decimal"
-              />
-
-              {sickConflict && (
-                <div className="mt-2 rounded-xl bg-red-100 text-red-800 px-3 py-2 text-sm font-medium">
-                  Start &amp; finish times must be removed when sick hours are entered
+              <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
+                <div className="text-sm text-gray-700 dark:text-white/70">
+                  Premiums today (Late / Night)
                 </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
-              <div className="text-sm text-gray-700 dark:text-white/70">Worked hours</div>
-              <div className="text-xl font-bold text-gray-900 dark:text-white">{workedHours}</div>
-            </div>
-
-            <div className="rounded-xl bg-gray-100 border border-gray-200 p-3 dark:bg-black/20 dark:border-white/10">
-              <div className="text-sm text-gray-700 dark:text-white/70">
-                Premiums today (Late / Night)
-              </div>
-              <div className="text-xl font-bold text-gray-900 dark:text-white">
-                {prem.lateHours} / {prem.nightHours}
-              </div>
-              <div className="text-xs text-gray-600 dark:text-white/50 mt-1">{premiumLabel}</div>
-            </div>
-          </div>
-
-          {editingId ? (
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-3 font-semibold text-white"
-                onClick={updateShift}
-                type="button"
-              >
-                Update shift
-              </button>
-
-              <button
-                className="w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold border border-white/10"
-                onClick={cancelEdit}
-                type="button"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold border border-white/10"
-              onClick={saveDayToMonth}
-              type="button"
-            >
-              Save day to month
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* -------------------- SHIFTS TAB -------------------- */}
-      {activeTab === "shifts" && (
-        <div className={card}>
-          <div className="text-lg font-semibold mb-3">Daily shifts</div>
-
-          {rows.length === 0 ? (
-            <div className="text-sm text-gray-600 dark:text-white/60">No saved shifts yet.</div>
-          ) : (
-            <div className="space-y-3">
-              {rows.map((r) => {
-                const b = computeRowBreakdown(r, settings, premiumWindows);
-                return (
-                  <div key={r.id} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold">{r.date}</div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="text-sm text-gray-700 dark:text-white/70">
-                          {r.startTime || "--:--"} → {r.endTime || "--:--"}
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => loadShiftForEdit(r)}
-                            className="text-xs px-2 py-1 rounded bg-blue-500 text-white"
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => deleteShift(r.id)}
-                            className="text-xs px-2 py-1 rounded bg-red-500 text-white"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* ✅ show numeric hours (matches Week/Month logic) */}
-                    <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
-                      <div>
-                        Scheduled: <b>{r.scheduledHours ?? 0}</b>
-                      </div>
-                      <div>
-                        Worked: <b>{b.worked}</b>
-                      </div>
-
-                      <div>
-                        Holiday hrs: <b>{b.hol}</b> <span className="text-xs opacity-70">({displayFlag(r.holidayFlag)})</span>
-                      </div>
-                      <div>
-                        Unpaid hrs:{" "}
-                        <b>{round2(b.unpaidFull + b.unpaidPart)}</b>{" "}
-                        <span className="text-xs opacity-70">({displayFlag(r.unpaidFlag)})</span>
-                      </div>
-
-                      <div>
-                        LIEU hrs: <b>{b.lieu}</b> <span className="text-xs opacity-70">({displayFlag(r.lieuFlag)})</span>
-                      </div>
-                      <div>
-                        BH hrs: <b>{b.bankHol}</b> <span className="text-xs opacity-70">({displayFlag(r.bankHolFlag)})</span>
-                      </div>
-
-                      <div>
-                        Double hrs: <b>{b.dbl}</b> <span className="text-xs opacity-70">({displayFlag(r.doubleFlag)})</span>
-                      </div>
-                      <div>
-                        Sick hrs: <b>{r.sickHours ?? 0}</b>
-                      </div>
-
-                      <div>
-                        Late prem: <b>{b.late}</b>
-                      </div>
-                      <div>
-                        Night prem: <b>{b.night}</b>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* -------------------- WEEK TAB -------------------- */}
-      {activeTab === "week" && (
-        <div className={card}>
-          <div className="text-lg font-semibold mb-2">Weekly summary</div>
-          <div className="text-xs text-gray-600 dark:text-white/60 mb-3">
-            Week start: {weekStartLabel(weekStartsOn)} (set in Settings)
-          </div>
-
-          {weeks.length === 0 ? (
-            <div className="text-sm text-gray-600 dark:text-white/60">No shifts yet.</div>
-          ) : (
-            <div className="space-y-3">
-              {weeks.slice(0, 8).map((w) => (
-                <div key={w.weekId} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-semibold">{w.label}</div>
-                    <div className="text-sm">
-                      Total: <b>{fmtGBP(w.totalPay)}</b>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
-                    <div>
-                      Worked: <b>{w.worked}</b>
-                    </div>
-                    <div>
-                      Qualifying: <b>{w.qualifying}</b>
-                    </div>
-                    <div>
-                      STD: <b>{w.std}</b>
-                    </div>
-                    <div>
-                      OT: <b>{w.ot}</b>
-                    </div>
-                    <div>
-                      Holiday: <b>{w.hol}</b>
-                    </div>
-                    <div>
-                      LIEU: <b>{w.lieu}</b>
-                    </div>
-                    <div>
-                      BH: <b>{w.bankHol}</b>
-                    </div>
-                    <div>
-                      Double: <b>{w.dbl}</b>
-                    </div>
-                    <div>
-                      Late: <b>{w.late}</b>
-                    </div>
-                    <div>
-                      Night: <b>{w.night}</b>
-                    </div>
-                  </div>
+                <div className="text-xl font-bold text-gray-900 dark:text-white">
+                  {prem.lateHours} / {prem.nightHours}
                 </div>
-              ))}
+                <div className="text-xs text-gray-600 dark:text-white/50 mt-1">{premiumLabel}</div>
+              </div>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* -------------------- MONTH TAB -------------------- */}
-      {activeTab === "month" && (
-        <div className={card}>
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <div className="text-lg font-semibold">This month</div>
+            {editingId ? (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-3 font-semibold text-white"
+                  onClick={updateShift}
+                  type="button"
+                >
+                  Update shift
+                </button>
 
-            <div className="flex gap-2 flex-wrap">
+                <button
+                  className="w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold border border-white/10"
+                  onClick={cancelEdit}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
               <button
-                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold text-white"
-                onClick={exportCSV}
-              >
-                Export CSV
-              </button>
-
-              <button
-  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
-  onClick={() => requirePro(() => exportAllTimeCSV(settings, premiumWindows))}
-  title={!pro ? "Pro feature" : "Exports every shift you've ever saved (even across cleared months)"}
->
-  Export ALL shifts {pro ? "" : "🔒"}
-</button>
-
-              <button
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"
-                onClick={() => requirePro(saveCurrentMonthSnapshot)}
+                className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold border border-white/10"
+                onClick={saveDayToMonth}
                 type="button"
-                title={!pro ? "Unlock Pro to save months" : "Save this month"}
               >
-                Save Month {pro ? "" : "🔒"}
-              </button>
-
-              <button
-                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
-                onClick={clearMonth}
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          <div className="text-lg font-semibold mb-2">Hours</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-            <div>
-              Total Worked: <b>{month.worked}</b>
-            </div>
-
-            <div>
-              Qualifying (for {otThresholdDisplay}): <b>{month.qualifying}</b>
-            </div>
-
-            <div>
-              STD Hours: <b>{month.std}</b>
-            </div>
-            <div>
-              OT Hours: <b>{month.ot}</b>
-            </div>
-            <div>
-              Late Prem: <b>{month.late}</b>
-            </div>
-            <div>
-              Night Prem: <b>{month.night}</b>
-            </div>
-            <div>
-              HOL Hours: <b>{month.hol}</b>
-            </div>
-            <div>
-              LIEU Hours: <b>{month.lieu}</b>
-            </div>
-            <div>
-              BH Hours: <b>{month.bankHol}</b>
-            </div>
-            <div>
-              Double Hours: <b>{month.dbl}</b>
-            </div>
-            <div>
-              Unpaid (Full): <b>{month.unpaidFull}</b>
-            </div>
-            <div>
-              Unpaid (Part): <b>{month.unpaidPart}</b>
-            </div>
-            <div>
-              Sick Hours: <b>{month.sick}</b>
-            </div>
-          </div>
-
-          <div className="pt-4 mt-4 border-t border-white/20">
-            <div className="text-lg font-semibold mb-2">Pay (£)</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-              <div>
-                STD pay: <b>{fmtGBP(month.stdPay)}</b>
-              </div>
-              <div>
-                OT pay: <b>{fmtGBP(month.otPay)}</b>
-              </div>
-              <div>
-                Sick pay: <b>{fmtGBP(month.sickPay)}</b>
-              </div>
-              <div>
-                Late add-on: <b>{fmtGBP(month.lateAddPay)}</b>
-              </div>
-              <div>
-                Night add-on: <b>{fmtGBP(month.nightAddPay)}</b>
-              </div>
-              <div>
-                LIEU pay: <b>{fmtGBP(month.lieuPay)}</b>
-              </div>
-              <div>
-                BH pay: <b>{fmtGBP(month.bankHolPay)}</b>
-              </div>
-              <div>
-                Double pay: <b>{fmtGBP(month.doublePay)}</b>
-              </div>
-              <div>
-                Holiday pay: <b>{fmtGBP(month.holPay)}</b>
-              </div>
-            </div>
-
-            <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
-
-            {/* Holiday balance */}
-            <div className="pt-4 mt-4 border-t border-white/20">
-              <div className="text-lg font-semibold mb-2">Holiday balance</div>
-
-              {!holidayBal || !settings.holidayBalanceStartDateYMD ? (
-                <div className="text-sm text-gray-600 dark:text-white/60">
-                  Set your starting balance + “balance as at” date in Settings to enable this.
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                    <div>
-                      Starting balance: <b>{holidayBal.startingBalance}</b> hrs
-                    </div>
-                    <div>
-                      Holiday taken: <b>{holidayBal.holidayTakenHours}</b> hrs
-                    </div>
-                    <div className="sm:col-span-2">
-                      Remaining balance: <b>{holidayBal.remainingBalance}</b> hrs
-                    </div>
-                  </div>
-
-                  <div className="mt-2 text-xs text-gray-600 dark:text-white/60">
-                    Counting Holiday shifts from <b>{holidayBal.periodStart}</b> onwards (within the tax year).
-                  </div>
-
-                  <div className="mt-2 rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-xs">
-                    Balance is only fully accurate if your starting balance is entered from the start of the current tax year.
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- HISTORY TAB (PRO) -------------------- */}
-      {activeTab === "history" && (
-        <div className={card}>
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <div className="text-lg font-semibold">History</div>
-
-            {pro && (
-              <button
-                type="button"
-                onClick={refreshSavedMonths}
-                className="text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-                title="Refresh saved months list"
-              >
-                Refresh
+                Save day to month
               </button>
             )}
           </div>
+        )}
 
-          {!pro ? (
-            <>
-              <div className="rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
-                Pro feature — unlock Pro to save and view historical months.
+        {/* -------------------- SHIFTS TAB -------------------- */}
+        {activeTab === "shifts" && (
+          <div className={card}>
+            <div className="text-lg font-semibold mb-3">Daily shifts</div>
+
+            {rows.length === 0 ? (
+              <div className="text-sm text-gray-600 dark:text-white/60">No saved shifts yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {rows.map((r) => {
+                  const b = computeRowBreakdown(r, settings, premiumWindows);
+                  return (
+                    <div key={r.id} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-semibold">{r.date}</div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm text-gray-700 dark:text-white/70">
+                            {r.startTime || "--:--"} → {r.endTime || "--:--"}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => loadShiftForEdit(r)}
+                              className="text-xs px-2 py-1 rounded bg-blue-500 text-white"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => deleteShift(r.id)}
+                              className="text-xs px-2 py-1 rounded bg-red-500 text-white"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ✅ show numeric hours (matches Week/Month logic) */}
+                      <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+                        <div>
+                          Scheduled: <b>{r.scheduledHours ?? 0}</b>
+                        </div>
+                        <div>
+                          Worked: <b>{b.worked}</b>
+                        </div>
+
+                        <div>
+                          Holiday hrs: <b>{b.hol}</b> <span className="text-xs opacity-70">({displayFlag(r.holidayFlag)})</span>
+                        </div>
+                        <div>
+                          Unpaid hrs:{" "}
+                          <b>{round2(b.unpaidFull + b.unpaidPart)}</b>{" "}
+                          <span className="text-xs opacity-70">({displayFlag(r.unpaidFlag)})</span>
+                        </div>
+
+                        <div>
+                          LIEU hrs: <b>{b.lieu}</b> <span className="text-xs opacity-70">({displayFlag(r.lieuFlag)})</span>
+                        </div>
+                        <div>
+                          BH hrs: <b>{b.bankHol}</b> <span className="text-xs opacity-70">({displayFlag(r.bankHolFlag)})</span>
+                        </div>
+
+                        <div>
+                          Double hrs: <b>{b.dbl}</b> <span className="text-xs opacity-70">({displayFlag(r.doubleFlag)})</span>
+                        </div>
+                        <div>
+                          Sick hrs: <b>{r.sickHours ?? 0}</b>
+                        </div>
+
+                        <div>
+                          Late prem: <b>{b.late}</b>
+                        </div>
+                        <div>
+                          Night prem: <b>{b.night}</b>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* -------------------- WEEK TAB -------------------- */}
+        {activeTab === "week" && (
+          <div className={card}>
+            <div className="text-lg font-semibold mb-2">Weekly summary</div>
+            <div className="text-xs text-gray-600 dark:text-white/60 mb-3">
+              Week start: {weekStartLabel(weekStartsOn)} (set in Settings)
+            </div>
+
+            {weeks.length === 0 ? (
+              <div className="text-sm text-gray-600 dark:text-white/60">No shifts yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {weeks.slice(0, 8).map((w) => (
+                  <div key={w.weekId} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold">{w.label}</div>
+                      <div className="text-sm">
+                        Total: <b>{fmtGBP(w.totalPay)}</b>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+                      <div>
+                        Worked: <b>{w.worked}</b>
+                      </div>
+                      <div>
+                        Qualifying: <b>{w.qualifying}</b>
+                      </div>
+                      <div>
+                        STD: <b>{w.std}</b>
+                      </div>
+                      <div>
+                        OT: <b>{w.ot}</b>
+                      </div>
+                      <div>
+                        Holiday: <b>{w.hol}</b>
+                      </div>
+                      <div>
+                        LIEU: <b>{w.lieu}</b>
+                      </div>
+                      <div>
+                        BH: <b>{w.bankHol}</b>
+                      </div>
+                      <div>
+                        Double: <b>{w.dbl}</b>
+                      </div>
+                      <div>
+                        Late: <b>{w.late}</b>
+                      </div>
+                      <div>
+                        Night: <b>{w.night}</b>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* -------------------- MONTH TAB -------------------- */}
+        {activeTab === "month" && (
+          <div className={card}>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div className="text-lg font-semibold">This month</div>
+
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold text-white"
+                  onClick={exportCSV}
+                >
+                  Export CSV
+                </button>
+
+                <button
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold text-white"
+                  onClick={() => requirePro(() => exportAllTimeCSV(settings, premiumWindows))}
+                  title={!pro ? "Pro feature" : "Exports every shift you've ever saved (even across cleared months)"}
+                >
+                  Export ALL shifts {pro ? "" : "🔒"}
+                </button>
+
+                <button
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"
+                  onClick={() => requirePro(saveCurrentMonthSnapshot)}
+                  type="button"
+                  title={!pro ? "Unlock Pro to save months" : "Save this month"}
+                >
+                  Save Month {pro ? "" : "🔒"}
+                </button>
+
+                <button
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
+                  onClick={clearMonth}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="text-lg font-semibold mb-2">Hours</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+              <div>
+                Total Worked: <b>{month.worked}</b>
               </div>
 
-              <div className="mt-4 rounded-2xl bg-white/10 border border-white/10 p-4">
-                <div className="font-semibold mb-2">Unlock Pro</div>
+              <div>
+                Qualifying (for {otThresholdDisplay}): <b>{month.qualifying}</b>
+              </div>
 
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    value={proCode}
-                    onChange={(e) => {
-                      setProCode(e.target.value);
-                      setProError(null);
-                    }}
-                    placeholder="Enter Pro code"
-                    className="flex-1 rounded-xl bg-black/30 px-3 py-2 text-white placeholder:text-white/40"
-                  />
+              <div>
+                STD Hours: <b>{month.std}</b>
+              </div>
+              <div>
+                OT Hours: <b>{month.ot}</b>
+              </div>
+              <div>
+                Late Prem: <b>{month.late}</b>
+              </div>
+              <div>
+                Night Prem: <b>{month.night}</b>
+              </div>
+              <div>
+                HOL Hours: <b>{month.hol}</b>
+              </div>
+              <div>
+                LIEU Hours: <b>{month.lieu}</b>
+              </div>
+              <div>
+                BH Hours: <b>{month.bankHol}</b>
+              </div>
+              <div>
+                Double Hours: <b>{month.dbl}</b>
+              </div>
+              <div>
+                Unpaid (Full): <b>{month.unpaidFull}</b>
+              </div>
+              <div>
+                Unpaid (Part): <b>{month.unpaidPart}</b>
+              </div>
+              <div>
+                Sick Hours: <b>{month.sick}</b>
+              </div>
+            </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const res = tryUnlockPro(proCode);
+            <div className="pt-4 mt-4 border-t border-white/20">
+              <div className="text-lg font-semibold mb-2">Pay (£)</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+                <div>
+                  STD pay: <b>{fmtGBP(month.stdPay)}</b>
+                </div>
+                <div>
+                  OT pay: <b>{fmtGBP(month.otPay)}</b>
+                </div>
+                <div>
+                  Sick pay: <b>{fmtGBP(month.sickPay)}</b>
+                </div>
+                <div>
+                  Late add-on: <b>{fmtGBP(month.lateAddPay)}</b>
+                </div>
+                <div>
+                  Night add-on: <b>{fmtGBP(month.nightAddPay)}</b>
+                </div>
+                <div>
+                  LIEU pay: <b>{fmtGBP(month.lieuPay)}</b>
+                </div>
+                <div>
+                  BH pay: <b>{fmtGBP(month.bankHolPay)}</b>
+                </div>
+                <div>
+                  Double pay: <b>{fmtGBP(month.doublePay)}</b>
+                </div>
+                <div>
+                  Holiday pay: <b>{fmtGBP(month.holPay)}</b>
+                </div>
+              </div>
 
-                      if (res.ok) {
-                        setPro(true);
-                        setProError(null);
-                        setProCode("");
-                        refreshSavedMonths();
-                      } else {
-                        setPro(false);
-                        setProError(res.error);
-                      }
-                    }}
-                    className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 font-semibold text-white"
-                  >
-                    Unlock
-                  </button>
+              <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
+
+              {/* Holiday balance */}
+              <div className="pt-4 mt-4 border-t border-white/20">
+                <div className="text-lg font-semibold mb-2">Holiday balance</div>
+
+                {!holidayBal || !settings.holidayBalanceStartDateYMD ? (
+                  <div className="text-sm text-gray-600 dark:text-white/60">
+                    Set your starting balance + “balance as at” date in Settings to enable this.
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                      <div>
+                        Starting balance: <b>{holidayBal.startingBalance}</b> hrs
+                      </div>
+                      <div>
+                        Holiday taken: <b>{holidayBal.holidayTakenHours}</b> hrs
+                      </div>
+                      <div className="sm:col-span-2">
+                        Remaining balance: <b>{holidayBal.remainingBalance}</b> hrs
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-xs text-gray-600 dark:text-white/60">
+                      Counting Holiday shifts from <b>{holidayBal.periodStart}</b> onwards (within the tax year).
+                    </div>
+
+                    <div className="mt-2 rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-xs">
+                      Balance is only fully accurate if your starting balance is entered from the start of the current tax year.
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* -------------------- HISTORY TAB (PRO) -------------------- */}
+        {activeTab === "history" && (
+          <div className={card}>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div className="text-lg font-semibold">History</div>
+
+              {pro && (
+                <button
+                  type="button"
+                  onClick={refreshSavedMonths}
+                  className="text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+                  title="Refresh saved months list"
+                >
+                  Refresh
+                </button>
+              )}
+            </div>
+
+            {!pro ? (
+              <>
+                <div className="rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
+                  Pro feature — unlock Pro to save and view historical months.
                 </div>
 
-                {proError && <div className="mt-2 text-red-300 text-sm">{proError}</div>}
-              </div>
-            </>
-          ) : savedMonths.length === 0 ? (
-            <div className="text-sm text-gray-600 dark:text-white/60">No saved months yet.</div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className={label}>Select saved month</div>
-                  <select
-                    className={input}
-                    value={selectedSavedMonthId}
-                    onChange={(e) => setSelectedSavedMonthId(e.target.value)}
-                  >
-                    {savedMonths.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
+                <div className="mt-4 rounded-2xl bg-white/10 border border-white/10 p-4">
+                  <div className="font-semibold mb-2">Unlock Pro</div>
 
-                  <div className="text-xs text-gray-600 dark:text-white/60 mt-1">
-                    {selectedSavedMonth
-                      ? `Shifts: ${selectedSavedMonth.shiftCount} • Saved: ${new Date(
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      value={proCode}
+                      onChange={(e) => {
+                        setProCode(e.target.value);
+                        setProError(null);
+                      }}
+                      placeholder="Enter Pro code"
+                      className="flex-1 rounded-xl bg-black/30 px-3 py-2 text-white placeholder:text-white/40"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const res = tryUnlockPro(proCode);
+
+                        if (res.ok) {
+                          setPro(true);
+                          setProError(null);
+                          setProCode("");
+                          refreshSavedMonths();
+                        } else {
+                          setPro(false);
+                          setProError(res.error);
+                        }
+                      }}
+                      className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 font-semibold text-white"
+                    >
+                      Unlock
+                    </button>
+                  </div>
+
+                  {proError && <div className="mt-2 text-red-300 text-sm">{proError}</div>}
+                </div>
+              </>
+            ) : savedMonths.length === 0 ? (
+              <div className="text-sm text-gray-600 dark:text-white/60">No saved months yet.</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className={label}>Select saved month</div>
+                    <select
+                      className={input}
+                      value={selectedSavedMonthId}
+                      onChange={(e) => setSelectedSavedMonthId(e.target.value)}
+                    >
+                      {savedMonths.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="text-xs text-gray-600 dark:text-white/60 mt-1">
+                      {selectedSavedMonth
+                        ? `Shifts: ${selectedSavedMonth.shiftCount} • Saved: ${new Date(
                           selectedSavedMonth.createdAt
                         ).toLocaleString()}`
-                      : ""}
+                        : ""}
+                    </div>
+                  </div>
+
+                  <div className="flex items-end justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => selectedSavedMonth && renameSavedMonth(selectedSavedMonth.id)}
+                      className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"
+                    >
+                      Rename
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => selectedSavedMonth && removeSavedMonth(selectedSavedMonth.id)}
+                      className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-end justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => selectedSavedMonth && renameSavedMonth(selectedSavedMonth.id)}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-white"
-                  >
-                    Rename
-                  </button>
+                {selectedSavedMonth && (
+                  <div className="mt-4 rounded-xl bg-black/10 dark:bg-black/20 p-3">
+                    <div className="font-semibold mb-2">{selectedSavedMonth.label}</div>
 
-                  <button
-                    type="button"
-                    onClick={() => selectedSavedMonth && removeSavedMonth(selectedSavedMonth.id)}
-                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
-                  >
-                    Delete
-                  </button>
-                </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+                      <div>
+                        Worked: <b>{selectedSavedMonth.totals?.worked ?? 0}</b>
+                      </div>
+                      <div>
+                        Qualifying: <b>{selectedSavedMonth.totals?.qualifying ?? 0}</b>
+                      </div>
+                      <div>
+                        STD: <b>{selectedSavedMonth.totals?.std ?? 0}</b>
+                      </div>
+                      <div>
+                        OT: <b>{selectedSavedMonth.totals?.ot ?? 0}</b>
+                      </div>
+                      <div>
+                        Holiday: <b>{selectedSavedMonth.totals?.hol ?? 0}</b>
+                      </div>
+                      <div>
+                        LIEU: <b>{selectedSavedMonth.totals?.lieu ?? 0}</b>
+                      </div>
+                      <div>
+                        BH: <b>{selectedSavedMonth.totals?.bankHol ?? 0}</b>
+                      </div>
+                      <div>
+                        Double: <b>{selectedSavedMonth.totals?.dbl ?? 0}</b>
+                      </div>
+                      <div>
+                        Late: <b>{selectedSavedMonth.totals?.late ?? 0}</b>
+                      </div>
+                      <div>
+                        Night: <b>{selectedSavedMonth.totals?.night ?? 0}</b>
+                      </div>
+                      <div>
+                        Total pay: <b>{fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}</b>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+</div>
+        {/* Bottom sticky nav (mobile tap-safe) */}
+        <div className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none">
+          <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)] pointer-events-none">
+            <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/90 dark:bg-black/60 backdrop-blur p-2 shadow-lg pointer-events-auto">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={tabButtonClass(activeTab === "shift")}
+                  onClick={() => setActiveTab("shift")}
+                >
+                  Shift
+                </button>
+
+                <button
+                  type="button"
+                  className={tabButtonClass(activeTab === "shifts")}
+                  onClick={() => setActiveTab("shifts")}
+                >
+                  Shifts
+                </button>
+
+                <button
+                  type="button"
+                  className={tabButtonClass(activeTab === "week")}
+                  onClick={() => setActiveTab("week")}
+                >
+                  Week
+                </button>
+
+                <button
+                  type="button"
+                  className={tabButtonClass(activeTab === "month")}
+                  onClick={() => setActiveTab("month")}
+                >
+                  Month
+                </button>
+
+                <button
+                  type="button"
+                  className={tabButtonClass(activeTab === "history", !pro)}
+                  onClick={() => setActiveTab("history")}
+                  title={!pro ? "Pro feature" : "History"}
+                >
+                  {pro ? "History" : "History 🔒"}
+                </button>
               </div>
-
-              {selectedSavedMonth && (
-                <div className="mt-4 rounded-xl bg-black/10 dark:bg-black/20 p-3">
-                  <div className="font-semibold mb-2">{selectedSavedMonth.label}</div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
-                    <div>
-                      Worked: <b>{selectedSavedMonth.totals?.worked ?? 0}</b>
-                    </div>
-                    <div>
-                      Qualifying: <b>{selectedSavedMonth.totals?.qualifying ?? 0}</b>
-                    </div>
-                    <div>
-                      STD: <b>{selectedSavedMonth.totals?.std ?? 0}</b>
-                    </div>
-                    <div>
-                      OT: <b>{selectedSavedMonth.totals?.ot ?? 0}</b>
-                    </div>
-                    <div>
-                      Holiday: <b>{selectedSavedMonth.totals?.hol ?? 0}</b>
-                    </div>
-                    <div>
-                      LIEU: <b>{selectedSavedMonth.totals?.lieu ?? 0}</b>
-                    </div>
-                    <div>
-                      BH: <b>{selectedSavedMonth.totals?.bankHol ?? 0}</b>
-                    </div>
-                    <div>
-                      Double: <b>{selectedSavedMonth.totals?.dbl ?? 0}</b>
-                    </div>
-                    <div>
-                      Late: <b>{selectedSavedMonth.totals?.late ?? 0}</b>
-                    </div>
-                    <div>
-                      Night: <b>{selectedSavedMonth.totals?.night ?? 0}</b>
-                    </div>
-                    <div>
-                      Total pay: <b>{fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}</b>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Bottom sticky nav (mobile tap-safe) */}
-      <div className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)] pointer-events-none">
-          <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/90 dark:bg-black/60 backdrop-blur p-2 shadow-lg pointer-events-auto">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "shift")}
-                onClick={() => setActiveTab("shift")}
-              >
-                Shift
-              </button>
-
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "shifts")}
-                onClick={() => setActiveTab("shifts")}
-              >
-                Shifts
-              </button>
-
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "week")}
-                onClick={() => setActiveTab("week")}
-              >
-                Week
-              </button>
-
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "month")}
-                onClick={() => setActiveTab("month")}
-              >
-                Month
-              </button>
-
-              <button
-                type="button"
-                className={tabButtonClass(activeTab === "history", !pro)}
-                onClick={() => setActiveTab("history")}
-                title={!pro ? "Pro feature" : "History"}
-              >
-                {pro ? "History" : "History 🔒"}
-              </button>
             </div>
           </div>
         </div>
-      </div>
-    </main>
-  );
+        </div>
+        </div>
+        );
 }

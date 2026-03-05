@@ -25,13 +25,14 @@ function isValidYMD(s?: string) {
   return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
-function getTaxYearStart(today: Date, month: number, day: number) {
-  const y = today.getFullYear();
-
-  const thisYear = new Date(Date.UTC(y, month - 1, day));
-  const lastYear = new Date(Date.UTC(y - 1, month - 1, day));
-
-  return today >= thisYear ? thisYear : lastYear;
+function parseYMDToUTCDate(ymd: string) {
+  // YYYY-MM-DD -> UTC midnight
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd || "").trim());
+  if (!m) return new Date(Date.UTC(1970, 0, 1));
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  return new Date(Date.UTC(y, mo, d));
 }
 
 function ymd(d: Date) {
@@ -41,13 +42,21 @@ function ymd(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function getTaxYearStartUTC(todayUTC: Date, month: number, day: number) {
+  const y = todayUTC.getUTCFullYear();
+  const thisYear = new Date(Date.UTC(y, month - 1, day));
+  const lastYear = new Date(Date.UTC(y - 1, month - 1, day));
+  return todayUTC >= thisYear ? thisYear : lastYear;
+}
+
 export function computeHolidayBalance(
   rows: ShiftRow[],
   settings: Settings
 ): HolidayBalanceResult {
   const startBal = clampNonNeg(settings.holidayStartBalanceHours);
 
-  if (!settings.holidayBalanceStartDateYMD) {
+  const startYMD = settings.holidayBalanceStartDateYMD;
+  if (!isValidYMD(startYMD)) {
     return {
       periodStart: "",
       holidayTakenHours: 0,
@@ -56,15 +65,17 @@ export function computeHolidayBalance(
     };
   }
 
-  const today = new Date();
+  // Use "today" in UTC to avoid timezone edge cases
+  const now = new Date();
+  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-  const taxStart = getTaxYearStart(
-    today,
+  const taxStart = getTaxYearStartUTC(
+    todayUTC,
     settings.holidayTaxYearStart.month,
     settings.holidayTaxYearStart.day
   );
 
-  const balanceStart = new Date(settings.holidayBalanceStartDateYMD + "T00:00:00Z");
+  const balanceStart = parseYMDToUTCDate(startYMD);
 
   const periodStartDate = balanceStart > taxStart ? balanceStart : taxStart;
   const periodStart = ymd(periodStartDate);
@@ -75,21 +86,19 @@ export function computeHolidayBalance(
     if (!isValidYMD(r.date)) continue;
     if (r.date < periodStart) continue;
 
-    if (r.holidayFlag === "Y") {
-      taken += clampNonNeg(Number(r.scheduledHours) || 0);
-    }
+    const hrs = clampNonNeg(Number(r.scheduledHours) || 0);
 
-    if (r.holidayFlag === "P") {
-      taken += clampNonNeg(Number(r.scheduledHours) || 0) / 2;
-    }
+    if (r.holidayFlag === "Y") taken += hrs;
+    else if (r.holidayFlag === "P") taken += hrs / 2;
   }
 
-  const remaining = startBal - taken;
+  // IMPORTANT: don’t let it go negative (this is what often “looks like a reset” elsewhere)
+  const remaining = clampNonNeg(startBal - taken);
 
   return {
     periodStart,
     holidayTakenHours: round2(taken),
-    startingBalance: startBal,
+    startingBalance: round2(startBal),
     remainingBalance: round2(remaining),
   };
 }
