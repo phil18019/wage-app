@@ -124,7 +124,28 @@ export default function HelpPage() {
 
           </div>
         </div>
+{/* Contact */}
+<div className="mt-6 rounded-2xl border border-gray-200 p-4 dark:border-white/20">
+  <h2 className="text-lg font-semibold mb-2">Contact</h2>
 
+  <p className="text-sm text-gray-600 dark:text-white/70">
+    If you have questions, find a bug, or want to suggest a feature,
+    feel free to get in touch.
+  </p>
+
+  <div className="mt-3">
+    <a
+      href="mailto:paycoreapp@gmail.com"
+      className="inline-block rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10"
+    >
+      Email PayCore Support
+    </a>
+  </div>
+
+  <p className="mt-2 text-xs text-gray-500 dark:text-white/50">
+    We aim to respond within 24-48 hours.
+  </p>
+</div>
         <p className="mt-6 text-xs text-gray-500 dark:text-gray-400 text-center">
           This is an estimated wage calculation and should be used as a guide.
           Always refer to your official company payslip for final figures.
