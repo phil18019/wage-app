@@ -134,12 +134,12 @@ export default function HelpPage() {
   </p>
 
   <div className="mt-3">
-    <a
-      href="mailto:paycoreapp@gmail.com"
-      className="inline-block rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10"
-    >
-      Email PayCore Support
-    </a>
+   <a
+  href="mailto:paycoreapp@gmail.com?subject=PayCore Support Request"
+  className="inline-block mt-3 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10"
+>
+  Email PayCore Support
+</a>
   </div>
 
   <p className="mt-2 text-xs text-gray-500 dark:text-white/50">
