@@ -270,7 +270,7 @@ export default function SettingsPage() {
   };
 
   const inputClass =
-  "mt-2 w-full min-w-0 max-w-full box-border rounded-xl border px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100 dark:border-white/20";
+  "mt-2 w-full min-w-0 max-w-full box-border appearance-none rounded-xl border px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100 dark:border-white/20";
   const labelClass = "text-sm font-medium text-gray-700 dark:text-gray-200";
 
   return (
@@ -317,7 +317,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid gap-4 [&>*]:min-w-0">
             {/* Holiday rate */}
             <div>
               <label className={labelClass}>Holiday rate (£)</label>
@@ -359,7 +359,7 @@ export default function SettingsPage() {
               </p>
 
               <div className={!pro ? "opacity-60" : ""} onClick={!pro ? requirePro : undefined}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 [&>*]:min-w-0">
                   <div>
                     <label className={labelClass}>Starting balance (hours)</label>
                     <input
@@ -388,7 +388,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="grid grid-cols-2 gap-4 mt-3 [&>*]:min-w-0">
                   <div>
                     <label className={labelClass}>Tax year starts (month)</label>
                     <input
@@ -585,7 +585,7 @@ export default function SettingsPage() {
 </label>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 [&>*]:min-w-0">
                     {/* Late card */}
                     <div
                       className={`rounded-xl border p-3 dark:border-white/20 ${
@@ -755,7 +755,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 [&>*]:min-w-0">
                 <div>
                   <label className={labelClass}>Base rate (£)</label>
                   <input
