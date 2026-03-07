@@ -91,6 +91,76 @@ export default function SettingsPage() {
     }
   }, []);
 
+ function exportBackup() {
+  const allTimeRaw = localStorage.getItem("wagecheck.alltime.v1");
+  const monthRaw = localStorage.getItem("wagecheck.month.v1");
+  const historyRaw = localStorage.getItem("wagecheck.history.v1");
+  const settingsRaw = localStorage.getItem("wagecheck.settings.v1");
+
+  const backup = {
+    allTime: allTimeRaw ? JSON.parse(allTimeRaw) : [],
+    month: monthRaw ? JSON.parse(monthRaw) : {},
+    history: historyRaw ? JSON.parse(historyRaw) : [],
+    settings: settingsRaw ? JSON.parse(settingsRaw) : {},
+    exportDate: new Date().toISOString(),
+    app: "PayCore"
+  };
+
+  const blob = new Blob(
+    [JSON.stringify(backup, null, 2)],
+    { type: "application/json" }
+  );
+
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `paycore-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+function importBackup() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+
+  input.onchange = (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = (event: any) => {
+      try {
+        const data = JSON.parse(event.target.result);
+
+        if (data.allTime !== undefined) {
+          localStorage.setItem("wagecheck.alltime.v1", JSON.stringify(data.allTime));
+        }
+        if (data.month !== undefined) {
+          localStorage.setItem("wagecheck.month.v1", JSON.stringify(data.month));
+        }
+        if (data.history !== undefined) {
+          localStorage.setItem("wagecheck.history.v1", JSON.stringify(data.history));
+        }
+        if (data.settings !== undefined) {
+          localStorage.setItem("wagecheck.settings.v1", JSON.stringify(data.settings));
+        }
+
+        alert("Backup imported successfully. Reloading app...");
+        window.location.reload();
+      } catch {
+        alert("Invalid backup file.");
+      }
+    };
+
+    reader.readAsText(file);
+  };
+
+  input.click();
+}
+
   // Prevent accidental double-taps on mobile
   const savingRef = useRef(false);
 
@@ -922,6 +992,48 @@ export default function SettingsPage() {
           Saved locally on this device only.
         </p>
       </div>
+      {/* Backup & Restore */}
+<div className="mt-8 rounded-xl border border-white/10 bg-white/5 p-4">
+  <h3 className="text-lg font-semibold mb-2">Backup & Restore</h3>
+
+  <p className="text-sm text-gray-400 mb-4">
+    Save a copy of your PayCore data so you can move to a new device or recover
+    your shifts if browser data is cleared.
+  </p>
+
+  <div className="flex flex-col gap-3">
+
+   <button
+  onClick={exportBackup}
+  className="w-full sm:w-auto rounded-lg bg-green-600 hover:bg-green-500 px-4 py-2 font-medium"
+>
+  Export backup
+</button>
+
+    <p className="text-xs text-gray-400">
+      Downloads a full backup of your saved shifts, history, months and settings.
+    </p>
+
+    <button
+  onClick={() => {
+    if (!pro) {
+      alert("Import backup is a Pro feature.");
+      return;
+    }
+    importBackup();
+  }}
+  className="w-full sm:w-auto rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 font-medium"
+>
+  {pro ? "Import backup" : "Import backup 🔒"}
+</button>
+
+    <p className="text-xs text-gray-400">
+      Restores PayCore data from a previously exported backup file.
+      Import replaces current data on this device.
+    </p>
+
+  </div>
+</div>
 
       <div className="mt-8 border-t pt-4 text-xs text-center text-gray-500 dark:text-gray-400 space-y-2">
         <Link href="/privacy?from=settings" className="block hover:underline">
