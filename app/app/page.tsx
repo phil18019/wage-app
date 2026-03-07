@@ -234,18 +234,19 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings, windows: PremiumWi
 
   let remainder = round2(Math.max(0, baseShift - workedPhysical));
 
-  const out = {
-    worked: workedPhysical,
-    hol: 0,
-    lieu: 0,
-    bankHol: 0,
-    dbl: 0,
-    unpaidFull: 0,
-    unpaidPart: 0,
-    sick: clampNonNeg(Number(r.sickHours) || 0),
-    late: 0,
-    night: 0,
-  };
+ const out = {
+  worked: workedPhysical,
+  hol: 0,
+  lieu: 0,
+  bankHol: 0,
+  dbl: 0,
+  stdTopUp: 0,
+  unpaidFull: 0,
+  unpaidPart: 0,
+  sick: clampNonNeg(Number(r.sickHours) || 0),
+  late: 0,
+  night: 0,
+};
 
   // FULL allocations (only one should be used)
   if (fullUnpaid) {
@@ -265,9 +266,10 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings, windows: PremiumWi
   // Double allocation (subset of worked)
   if (fullDouble) {
     out.dbl = round2(Math.min(baseShift, Math.max(0, whRaw || baseShift)));
-  } else if (partDouble) {
-    out.dbl = round2(Math.min(workedPhysical, baseShift / 2));
-  }
+} else if (partDouble) {
+  out.dbl = round2(workedPhysical);
+  out.stdTopUp = round2(Math.max(0, baseShift - workedPhysical));
+}
 
   // PART allocations (consume remainder once, priority order)
   if (remainder > 0) {
@@ -312,17 +314,26 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings, windows: PremiumWi
     let premEnd = "";
 
     // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
-    if (hasDouble) {
-      premEnd = hasEnd ? (r.endTime as string) : sh > 0 ? addHoursToTime(r.startTime, sh) : "";
-    }
-    // LIEU/BH: only protect to scheduled window if setting is ON
-    else if (hasLieuOrBH && protectLieuBH) {
-      premEnd = scheduledPremEnd;
-    }
-    // Normal (or LIEU/BH with protection OFF)
-    else {
-      premEnd = normalPremEnd;
-    }
+    // Full Double: keep existing behaviour
+if (fullDouble) {
+  premEnd = hasEnd ? (r.endTime as string) : sh > 0 ? addHoursToTime(r.startTime, sh) : "";
+}
+// Part Double: when protection is ON, protect across scheduled window
+else if (partDouble && protectLieuBH) {
+  premEnd = scheduledPremEnd;
+}
+// Part Double: when protection is OFF, use actual/normal end
+else if (partDouble) {
+  premEnd = normalPremEnd;
+}
+// LIEU/BH: protect to scheduled window only if toggle ON
+else if (hasLieuOrBH && protectLieuBH) {
+  premEnd = scheduledPremEnd;
+}
+// Normal (or LIEU/BH with protection OFF)
+else {
+  premEnd = normalPremEnd;
+}
 
     const p = computePremiumHours(r.startTime, premEnd, windows);
 
@@ -559,6 +570,8 @@ export default function Home() {
 
     const hasLieuOrBH = lieuFlag !== "" || bankHolFlag !== "";
     const hasDouble = doubleFlag !== "";
+    const fullDouble = doubleFlag === "Y";
+    const partDouble = doubleFlag === "P";
 
     if (premiumsBlocked || !startTime) return { lateHours: 0, nightHours: 0 };
 
@@ -566,28 +579,39 @@ export default function Home() {
 
     const normalPremEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
     const scheduledPremEnd = sh > 0 ? addHoursToTime(startTime, sh) : normalPremEnd;
+let premEnd = normalPremEnd;
 
-    let premEnd = normalPremEnd;
-
-    // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
-    if (hasDouble) {
-      premEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
-    }
-    // LIEU/BH: protect to scheduled window only if toggle ON
-    else if (hasLieuOrBH && protectLieuBH) {
-      premEnd = scheduledPremEnd;
-    }
-    // Normal (or LIEU/BH with protection OFF)
-    else {
-      premEnd = normalPremEnd;
-    }
+// Full Double: keep existing behaviour
+if (fullDouble) {
+  premEnd = hasEnd ? endTime : sh > 0 ? addHoursToTime(startTime, sh) : "";
+}
+// Part Double: protect across scheduled window when toggle ON
+else if (partDouble && protectLieuBH) {
+  premEnd = scheduledPremEnd;
+}
+// Part Double: normal worked window when toggle OFF
+else if (partDouble) {
+  premEnd = normalPremEnd;
+}
+// LIEU/BH: protect to scheduled window only if toggle ON
+else if (hasLieuOrBH && protectLieuBH) {
+  premEnd = scheduledPremEnd;
+}
+// Normal (or LIEU/BH with protection OFF)
+else {
+  premEnd = normalPremEnd;
+}
 
     const p = computePremiumHours(startTime, premEnd, premiumWindows);
 
     // Premiums count if:
     // - Protected scenario (Double always; LIEU/BH only when toggle ON), OR
     // - There was physically worked time
-    const premiumsProtected = hasDouble || (hasLieuOrBH && protectLieuBH);
+   
+    const premiumsProtected =
+  fullDouble ||
+  (partDouble && protectLieuBH) ||
+  (hasLieuOrBH && protectLieuBH);
 
     if (premiumsProtected || workedPhysical > 0) return p;
 
@@ -1238,7 +1262,7 @@ const input =
                         <div>
                           Worked: <b>{b.worked}</b>
                         </div>
-
+                        
                         <div>
                           Holiday hrs: <b>{b.hol}</b> <span className="text-xs opacity-70">({displayFlag(r.holidayFlag)})</span>
                         </div>

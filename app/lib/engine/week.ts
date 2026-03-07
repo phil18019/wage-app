@@ -153,6 +153,7 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
     lieu: 0,
     bankHol: 0,
     dbl: 0,
+    stdTopUp: 0,
     unpaidFull: 0,
     unpaidPart: 0,
     sick: clampNonNeg(Number(r.sickHours) || 0),
@@ -175,11 +176,12 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
     remainder = 0;
   }
 
-  // Double allocation (subset of worked)
+  // Double allocation
   if (fullDouble) {
     out.dbl = round2(Math.min(baseShift, Math.max(0, whRaw || baseShift)));
   } else if (partDouble) {
-    out.dbl = round2(Math.min(workedPhysical, baseShift / 2));
+    out.dbl = round2(workedPhysical);
+    out.stdTopUp = round2(Math.max(0, baseShift - workedPhysical));
   }
 
   // PART allocations (consume remainder once, priority order)
@@ -199,7 +201,7 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
     }
   }
 
-  // ✅ Premiums (Option A: protect LIEU/BH controlled by a single setting flag)
+  // ✅ Premiums (part double follows same protection toggle style as LIEU/BH)
   const premiumsBlocked = fullHol || fullUnpaid; // ONLY full hol/unpaid
 
   // Default to TRUE if the field doesn't exist yet (keeps old behaviour)
@@ -214,8 +216,6 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
     const hasLieuOrBH =
       (r.lieuFlag ?? "").trim() !== "" || (r.bankHolFlag ?? "").trim() !== "";
 
-    const hasDouble = (r.doubleFlag ?? "").trim() !== "";
-
     const normalPremEnd = hasEnd
       ? (r.endTime as string)
       : sh > 0
@@ -227,13 +227,21 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
 
     let premEnd = "";
 
-    // Double: prefer actual endTime (includes extra premiums if worked > scheduled)
-    if (hasDouble) {
+    // Full Double: keep existing behaviour (actual end if available)
+    if (fullDouble) {
       premEnd = hasEnd
         ? (r.endTime as string)
         : sh > 0
           ? addHoursToTime(r.startTime, sh)
           : "";
+    }
+    // Part Double: when protection is ON, protect across scheduled window
+    else if (partDouble && protectLieuBH) {
+      premEnd = scheduledPremEnd;
+    }
+    // Part Double: when protection is OFF, use actual/normal end
+    else if (partDouble) {
+      premEnd = normalPremEnd;
     }
     // LIEU/BH: only protect to scheduled window if the setting is ON
     else if (hasLieuOrBH && protectLieuBH) {
@@ -248,9 +256,12 @@ function computeRowBreakdown(r: ShiftRow, settings: Settings) {
     const p = computePremiumHours(r.startTime, premEnd, windows);
 
     // Premiums count if:
-    // - It's a protected scenario (Double always protected; LIEU/BH depends on toggle), OR
-    // - There was worked time (normal shifts)
-    const premiumsProtected = hasDouble || (hasLieuOrBH && protectLieuBH);
+    // - It's a protected scenario
+    // - Or there was worked time
+    const premiumsProtected =
+      fullDouble ||
+      (partDouble && protectLieuBH) ||
+      (hasLieuOrBH && protectLieuBH);
 
     if (premiumsProtected || workedPhysical > 0) {
       out.late += clampNonNeg(p.lateHours);
@@ -297,7 +308,7 @@ function emptyWeek(weekId: string): WeekTotals {
  * ✅ WEEKLY OT ENGINE
  * - Groups by week start (settings.weekStartsOn)
  * - OT threshold applies per week and resets each new week
- * - Qualifying includes worked + hol + lieu + bankHol
+ * - Qualifying includes worked + hol + lieu + bankHol (+ part-double stdTopUp)
  * - OT can only be paid from worked hours excluding Double subset
  * - holidayRate stays from Settings (not history)
  */
@@ -401,9 +412,15 @@ export function computeWeeklyTotals(
       calcs.push({ r, b, base, otAdd, lateAdd, nightAdd, doubleRate, workedAvail });
     }
 
+    const stdTopUpWeek = round2(
+      calcs.reduce((sum, x) => sum + (x.b.stdTopUp ?? 0), 0)
+    );
+
     // ---- WEEK-LEVEL qualifying / OT / STD ----
-    // Your intended rule: OT triggers from qualifying
-    const qualifyingWeek = round2(Math.max(0, tot.worked + tot.hol + tot.lieu + tot.bankHol));
+    // Qualifying includes worked + hol + lieu + bankHol + part-double stdTopUp
+    const qualifyingWeek = round2(
+      Math.max(0, tot.worked + tot.hol + tot.lieu + tot.bankHol + stdTopUpWeek)
+    );
     const otHoursShouldBe = round2(Math.max(0, qualifyingWeek - otThreshold));
 
     // OT can only be PAID from worked hours (excluding double)
@@ -412,54 +429,30 @@ export function computeWeeklyTotals(
     );
 
     const otPaidWeek = round2(Math.min(otHoursShouldBe, workedAvailWeek));
-    const stdPaidWeek = round2(Math.max(0, workedAvailWeek - otPaidWeek));
+    const stdPaidWeek = round2(Math.max(0, workedAvailWeek - otPaidWeek) + stdTopUpWeek);
 
     tot.qualifying = qualifyingWeek;
     tot.ot = otPaidWeek;
     tot.std = stdPaidWeek;
-    // ✅ Option A: enforce displayed STD + OT == payable worked (worked minus double)
-const payableWorkedWeek = round2(Math.max(0, tot.worked - tot.dbl));
-tot.ot = round2(Math.min(tot.ot, payableWorkedWeek)); // safety clamp
-tot.std = round2(Math.max(0, payableWorkedWeek - tot.ot));
+
+    // displayed payable bucket safety
+    const payableHoursWeek = round2(workedAvailWeek + stdTopUpWeek);
+    tot.ot = round2(Math.min(tot.ot, workedAvailWeek));
+    tot.std = round2(Math.max(0, payableHoursWeek - tot.ot));
 
     // ---- PASS 2: allocate OT pay to the LAST worked hours of the week ----
-    // This prevents LIEU/BH mid-week from "stealing" OT allocation timing.
     let remainingOT = otPaidWeek;
 
-    for (let i = calcs.length - 1; i >= 0; i--) {
-      const c = calcs[i];
-      if (remainingOT <= 0) break;
-
-      const takeOT = round2(Math.min(c.workedAvail, remainingOT));
-      remainingOT = round2(remainingOT - takeOT);
-
-      // OT pay for these hours
-      tot.otPay += round2(takeOT * (c.base + c.otAdd));
-      // remaining hours in this row are std
-      const stdHere = round2(c.workedAvail - takeOT);
-      tot.stdPay += round2(stdHere * c.base);
-    }
-
-    // Any rows not touched by OT allocation were fully std
-    // (only needed if remainingOT exhausted early; loop above already std-paid the rest per row)
-    // BUT we already std-paid inside the loop for every row that got considered.
-    // We still need to std-pay rows BEFORE the OT allocation starts.
-    // So do a simple check: if otPaidWeek < workedAvailWeek, some hours were std-paid already in OT loop,
-    // but rows earlier than the last OT allocation haven't been std-paid yet.
-    // Easiest: recompute stdPay from scratch based on allocation.
-
-    // Rebuild std/ot pay cleanly (to avoid double counting)
+    // Rebuild std/ot pay cleanly from scratch
     tot.stdPay = 0;
     tot.otPay = 0;
-
-    remainingOT = otPaidWeek;
 
     for (let i = calcs.length - 1; i >= 0; i--) {
       const c = calcs[i];
       const takeOT = remainingOT > 0 ? round2(Math.min(c.workedAvail, remainingOT)) : 0;
       remainingOT = round2(remainingOT - takeOT);
 
-      const stdHere = round2(c.workedAvail - takeOT);
+      const stdHere = round2(c.workedAvail - takeOT + (c.b.stdTopUp ?? 0));
 
       tot.otPay += round2(takeOT * (c.base + c.otAdd));
       tot.stdPay += round2(stdHere * c.base);
