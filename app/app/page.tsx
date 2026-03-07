@@ -1556,19 +1556,9 @@ const input =
 
                     <button
                       type="button"
-                      onClick={() => {
-                        const res = tryUnlockPro(proCode);
-
-                        if (res.ok) {
-                          setPro(true);
-                          setProError(null);
-                          setProCode("");
-                          refreshSavedMonths();
-                        } else {
-                          setPro(false);
-                          setProError(res.error);
-                        }
-                      }}
+                     onClick={() => {
+                    window.location.href = "/api/stripe/checkout";
+                    }}
                       className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 font-semibold text-white"
                     >
                       Unlock
