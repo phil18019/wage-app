@@ -42,7 +42,7 @@ export async function GET() {
         },
       ],
       success_url: `${appUrl}/?success=1`,
-      cancel_url: `${appUrl}/?canceled=1`,
+       cancel_url: `${appUrl}/?canceled=1`,
     });
 
     if (!session.url) {
