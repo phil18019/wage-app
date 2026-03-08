@@ -449,11 +449,14 @@ export default function Home() {
       setSettings(DEFAULT_SETTINGS);
     }
 
-   const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(window.location.search);
 const success = params.get("success");
 
 if (success === "1") {
   setPro(true);
+
+  // remove ?success=1 from URL after unlock
+  window.history.replaceState({}, "", "/app");
 } else {
   setPro(isProEnabled());
 }
