@@ -41,8 +41,8 @@ export async function GET() {
           quantity: 1,
         },
       ],
-      success_url: `${appUrl}/?success=1`,
-       cancel_url: `${appUrl}/?canceled=1`,
+      success_url: `${appUrl}/app?success=1`,
+cancel_url: `${appUrl}/app?canceled=1`,
     });
 
     if (!session.url) {
