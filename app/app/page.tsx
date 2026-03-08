@@ -407,8 +407,7 @@ export default function Home() {
   const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
 
   const [pro, setPro] = useState(false);
-  const [proCode, setProCode] = useState("");
-  const [proError, setProError] = useState<string | null>(null);
+ 
 
   const [date, setDate] = useState<string>(() => {
     const d = new Date();
@@ -1557,15 +1556,7 @@ const input =
                   <div className="font-semibold mb-2">Unlock Pro</div>
 
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      value={proCode}
-                      onChange={(e) => {
-                        setProCode(e.target.value);
-                        setProError(null);
-                      }}
-                      placeholder="Enter Pro code"
-                      className="flex-1 rounded-xl bg-black/30 px-3 py-2 text-white placeholder:text-white/40"
-                    />
+                    
 
                     <button
                       type="button"
@@ -1578,7 +1569,7 @@ const input =
                     </button>
                   </div>
 
-                  {proError && <div className="mt-2 text-red-300 text-sm">{proError}</div>}
+                 
                 </div>
               </>
             ) : savedMonths.length === 0 ? (
