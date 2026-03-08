@@ -449,7 +449,14 @@ export default function Home() {
       setSettings(DEFAULT_SETTINGS);
     }
 
-    setPro(isProEnabled());
+   const params = new URLSearchParams(window.location.search);
+const success = params.get("success");
+
+if (success === "1") {
+  setPro(true);
+} else {
+  setPro(isProEnabled());
+}
 
     try {
       const raw = localStorage.getItem(STORAGE_KEY_MONTH);
