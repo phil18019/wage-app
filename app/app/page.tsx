@@ -470,7 +470,20 @@ export default function Home() {
       // ignore
     }
   }, []);
+useEffect(() => {
+  if (typeof window === "undefined") return;
 
+  const params = new URLSearchParams(window.location.search);
+  const success = params.get("success");
+
+  if (success === "1") {
+    localStorage.setItem("wagecheck_pro_v1", "1");
+    setPro(true);
+
+    // remove the success parameter from the URL
+    window.history.replaceState({}, "", "/");
+  }
+}, []);
   // Re-sync settings when returning from /settings (fixes Shift tab using stale checkbox value)
   useEffect(() => {
     const syncSettings = () => {
