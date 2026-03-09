@@ -33,6 +33,7 @@ type ShiftRow = {
   startTime: string; // "HH:MM"
   endTime: string; // "HH:MM"
   holidayFlag: Flag;
+  
   unpaidFlag: Flag;
   lieuFlag: Flag;
   bankHolFlag: Flag;
@@ -694,28 +695,28 @@ else {
     setSickHours("");
   }
 
-  function saveDayToMonth() {
-    const sh = clampNonNeg(Number(scheduledHours) || 0);
-    const sick = clampNonNeg(Number(sickHours) || 0);
+ function saveDayToMonth() {
+  const sh = clampNonNeg(Number(scheduledHours) || 0);
+  const sick = clampNonNeg(Number(sickHours) || 0);
 
-    const row: ShiftRow = {
-      id: `${date}-${Date.now()}`,
-      date,
-      scheduledHours: sh,
-      startTime: startTime || "",
-      endTime: endTime || "",
-      holidayFlag,
-      unpaidFlag,
-      lieuFlag,
-      bankHolFlag,
-      doubleFlag,
-      sickHours: sick,
-    };
+  const row: ShiftRow = {
+    id: `${date}-${Date.now()}`,
+    date,
+    scheduledHours: sh,
+    startTime: startTime || "",
+    endTime: endTime || "",
+    holidayFlag,
+    unpaidFlag,
+    lieuFlag,
+    bankHolFlag,
+    doubleFlag,
+    sickHours: sick,
+  };
 
-    setRows((prev) => [row, ...prev]);
-    upsertAllTimeShift(row);
-    resetDailyInputs();
-  }
+  setRows((prev) => [row, ...prev]);
+  upsertAllTimeShift(row);
+  resetDailyInputs();
+}
 
   function deleteShift(id: string) {
     if (!confirm("Delete this saved shift?")) return;

@@ -4,6 +4,8 @@ export type ShiftRow = {
   date: string;
   holidayFlag?: "" | "Y" | "P";
   scheduledHours?: number;
+  startTime?: string;
+  endTime?: string;
 };
 
 export type HolidayBalanceResult = {
@@ -20,6 +22,27 @@ function round2(n: number) {
 function clampNonNeg(n: number) {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
+
+/* ADD THESE TWO FUNCTIONS HERE */
+
+function timeToMinutes(t?: string) {
+  if (!t || !/^\d{2}:\d{2}$/.test(t)) return 0;
+  const [hh, mm] = t.split(":").map(Number);
+  return hh * 60 + mm;
+}
+
+function computeWorkedHours(startTime?: string, endTime?: string) {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+
+  if (!startTime || !endTime) return 0;
+
+  let mins = end - start;
+  if (mins < 0) mins += 24 * 60; // overnight shifts support
+
+  return Math.max(0, mins / 60);
+}
+
 
 function isValidYMD(s?: string) {
   return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -86,10 +109,14 @@ export function computeHolidayBalance(
     if (!isValidYMD(r.date)) continue;
     if (r.date < periodStart) continue;
 
-    const hrs = clampNonNeg(Number(r.scheduledHours) || 0);
+   const scheduled = clampNonNeg(Number(r.scheduledHours) || 0);
+const worked = clampNonNeg(computeWorkedHours(r.startTime, r.endTime));
 
-    if (r.holidayFlag === "Y") taken += hrs;
-    else if (r.holidayFlag === "P") taken += hrs / 2;
+if (r.holidayFlag === "Y") {
+  taken += scheduled;
+} else if (r.holidayFlag === "P") {
+  taken += clampNonNeg(scheduled - worked);
+}
   }
 
   // IMPORTANT: don’t let it go negative (this is what often “looks like a reset” elsewhere)
