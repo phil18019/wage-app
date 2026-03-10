@@ -723,6 +723,34 @@ else {
     setRows((prev) => prev.filter((r) => r.id !== id));
     deleteAllTimeShift(id);
   }
+async function handleRestorePro() {
+  const email = window.prompt("Enter the email used for your subscription");
+
+  if (!email) return;
+
+  try {
+    const res = await fetch("/api/stripe/restore", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json();
+
+    if (data.active) {
+      localStorage.setItem("wagecheck_pro_v1", "1");
+      setPro(true);
+      alert("Pro restored successfully.");
+    } else {
+      alert("No active subscription found for that email.");
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Unable to restore Pro right now. Please try again.");
+  }
+}
 
   function loadShiftForEdit(row: ShiftRow) {
     setActiveTab("shift");
@@ -1576,6 +1604,14 @@ const input =
                     >
                       Unlock
                     </button>
+
+                    <button
+  type="button"
+  onClick={handleRestorePro}
+  className="rounded-xl bg-white/10 hover:bg-white/20 px-4 py-2 text-white"
+>
+  Restore Pro
+</button>
                   </div>
 
                  
