@@ -1067,6 +1067,13 @@ const input =
             </nav>
           </div>
         </header>
+
+        {/* Announcement banner */}
+<div className="overflow-hidden bg-blue-600/20 border border-blue-400/30 rounded-xl mb-4">
+  <div className="whitespace-nowrap text-sm py-2 animate-marquee">
+    Final testing stages — PayCore launching soon • Final testing stages — PayCore launching soon • Final testing stages — PayCore launching soon •
+  </div>
+</div>
         <div className="flex-1 min-h-0 overflow-y-auto pb-28">
 
         {/* -------------------- SHIFT TAB -------------------- */}
