@@ -11,9 +11,14 @@ export default function Landing() {
           className="mx-auto h-44 w-44 sm:h-56 sm:w-56 rounded-3xl shadow-lg mb-6"
         />
 
-        <p className="text-gray-600 dark:text-white/70 text-center max-w-md mx-auto mt-2 mb-6">
-          Take control of your pay. Every hour. Every premium. Every time.
-        </p>
+        <div className="max-w-md mx-auto mt-2 mb-6">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-black dark:text-white">
+            Know exactly what you should be paid.
+          </h1>
+          <p className="text-gray-600 dark:text-white/70 mt-3">
+            Track hours, overtime and premiums pay with PayCore.
+          </p>
+        </div>
 
         <div className="mt-8 grid gap-3 text-left text-sm">
           <div className="rounded-2xl bg-black/5 dark:bg-white/10 p-4">
@@ -23,7 +28,7 @@ export default function Landing() {
             ✅ Premium windows (Late / Night) built-in
           </div>
           <div className="rounded-2xl bg-black/5 dark:bg-white/10 p-4">
-            ✅ Export shifts + totals anytime
+            ✅ Export shifts and totals anytime
           </div>
           <div className="rounded-2xl bg-black/5 dark:bg-white/10 p-4">
             ✅ Intelligent leave &amp; part-shift logic
@@ -40,14 +45,13 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="mt-10 flex flex-col items-center gap-2 text-xs text-gray-500 dark:text-white/60">
- <Link href="/privacy?from=landing" className="opacity-70 hover:opacity-100">
-  Privacy Policy
-</Link>
+        <Link href="/privacy?from=landing" className="opacity-70 hover:opacity-100">
+          Privacy Policy
+        </Link>
 
-<Link href="/terms?from=landing" className="opacity-70 hover:opacity-100">
-  Terms & Conditions
-</Link>
-
+        <Link href="/terms?from=landing" className="opacity-70 hover:opacity-100">
+          Terms &amp; Conditions
+        </Link>
 
         <div className="mt-2 text-[11px] opacity-70">
           ©️ {new Date().getFullYear()} PayCore
