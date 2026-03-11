@@ -78,7 +78,7 @@ export default async function Privacy({
 
       <h2 className="text-lg font-semibold">Contact</h2>
       <p>
-        Created by Phil Crompton.  
+        PayCore is developed and maintained by Phil Crompton.  
         If you have any questions about this policy, please contact the
         developer via the official PayCore website or app support page.
       </p>
