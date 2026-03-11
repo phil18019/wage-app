@@ -1036,7 +1036,7 @@ const input =
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs text-gray-600 dark:text-white/60 truncate">
-                v{APP_VERSION} • Created by Phil Crompton
+                v{APP_VERSION} • PayCore est. 2026
               </div>
 
               <div className="mt-1">
