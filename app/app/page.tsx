@@ -1615,7 +1615,7 @@ const input =
                     <button
   type="button"
   onClick={handleRestorePro}
-  className="rounded-xl bg-white/10 hover:bg-white/20 px-4 py-2 text-white"
+  className="rounded-xl bg-white/10 hover:bg-white/20 px-4 py-2 text-gray-600"
 >
   Restore Pro
 </button>
