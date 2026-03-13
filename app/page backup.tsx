@@ -12,8 +12,9 @@ import {
   listSavedMonths,
   upsertSavedMonth,
   deleteSavedMonth,
-  monthIdFromDate,
-  labelFromMonthId,
+  getDateRangeFromRows,
+  periodIdFromDates,
+  labelFromPeriodDates,
   type SavedMonth,
 } from "./lib/engine/history";
 
@@ -631,14 +632,21 @@ export default function Home() {
       return;
     }
 
-    const id = monthIdFromDate(date);
-    const defaultLabel = labelFromMonthId(id);
+    const { startDate, endDate } = getDateRangeFromRows(rows);
 
-    const customLabelRaw = prompt("Name this saved period:", defaultLabel);
-    if (customLabelRaw === null) return;
-    const label = customLabelRaw.trim() || defaultLabel;
+if (!startDate || !endDate) {
+  alert("No valid shift dates found to save.");
+  return;
+}
 
-    const existing = savedMonths.find((m) => m.id === id);
+const id = periodIdFromDates(startDate, endDate);
+const defaultLabel = labelFromPeriodDates(startDate, endDate);
+
+const customLabelRaw = prompt("Name this saved period:", defaultLabel);
+if (customLabelRaw === null) return;
+const label = customLabelRaw.trim() || defaultLabel;
+
+const existing = savedMonths.find((m) => m.id === id);
 
     if (existing) {
       const ok = confirm(
