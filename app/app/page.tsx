@@ -744,9 +744,11 @@ async function handleRestorePro() {
       localStorage.setItem("wagecheck_pro_v1", "1");
       setPro(true);
       alert("Pro restored successfully.");
-    } else {
-      alert("No active subscription found for that email.");
-    }
+   } else {
+  localStorage.removeItem("wagecheck_pro_v1");
+  setPro(false);
+  alert("No active subscription found for that email.");
+}
   } catch (err) {
     console.error(err);
     alert("Unable to restore Pro right now. Please try again.");
