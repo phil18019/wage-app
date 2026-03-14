@@ -443,44 +443,13 @@ export default function Home() {
     setSavedMonths(listSavedMonths());
   }
 
-  // Load settings / month rows / pro / saved months
-  useEffect(() => {
-    try {
-      setSettings(getSettings());
-    } catch {
-      setSettings(DEFAULT_SETTINGS);
-    }
-
- const params = new URLSearchParams(window.location.search);
-const success = params.get("success");
-
-if (success === "1") {
-  localStorage.setItem("wagecheck_pro_v1", "1");
-  setPro(true);
-  window.history.replaceState({}, "", "/app");
-} else {
-  setPro(isProEnabled());
-}
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_MONTH);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setRows(parsed as ShiftRow[]);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setHasLoadedRows(true);
-    }
-
-    try {
-      refreshSavedMonths();
-    } catch {
-      // ignore
-    }
-  }, []);
+ // Load settings / month rows / pro / saved months
 useEffect(() => {
-  if (typeof window === "undefined") return;
+  try {
+    setSettings(getSettings());
+  } catch {
+    setSettings(DEFAULT_SETTINGS);
+  }
 
   const params = new URLSearchParams(window.location.search);
   const success = params.get("success");
@@ -488,11 +457,65 @@ useEffect(() => {
   if (success === "1") {
     localStorage.setItem("wagecheck_pro_v1", "1");
     setPro(true);
+    window.history.replaceState({}, "", "/app");
+  } else {
+    setPro(isProEnabled());
+  }
 
-    // remove the success parameter from the URL
-    window.history.replaceState({}, "", "/");
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_MONTH);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setRows(parsed as ShiftRow[]);
+    }
+  } catch {
+    // ignore
+  } finally {
+    setHasLoadedRows(true);
+  }
+
+  try {
+    refreshSavedMonths();
+  } catch {
+    // ignore
   }
 }, []);
+
+// Auto-check Stripe Pro status on app load
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const savedEmail = localStorage.getItem("wagecheck_pro_email_v1");
+  if (!savedEmail) return;
+
+  const checkProStatus = async () => {
+    try {
+      const res = await fetch("/api/stripe/restore", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: savedEmail }),
+      });
+
+      const data = await res.json();
+
+      if (data.active) {
+        localStorage.setItem("wagecheck_pro_v1", "1");
+        setPro(true);
+      } else {
+        localStorage.removeItem("wagecheck_pro_v1");
+        localStorage.removeItem("wagecheck_pro_email_v1");
+        setPro(false);
+      }
+    } catch (err) {
+      console.error("Auto Pro check failed:", err);
+    }
+  };
+
+  checkProStatus();
+}, []);
+
   // Re-sync settings when returning from /settings (fixes Shift tab using stale checkbox value)
   useEffect(() => {
     const syncSettings = () => {
@@ -742,10 +765,12 @@ async function handleRestorePro() {
 
 if (data.active) {
   localStorage.setItem("wagecheck_pro_v1", "1");
+  localStorage.setItem("wagecheck_pro_email_v1", email);
   setPro(true);
   alert("Pro restored successfully.");
 } else {
   localStorage.removeItem("wagecheck_pro_v1");
+  localStorage.removeItem("wagecheck_pro_email_v1");
   setPro(false);
   alert("No active subscription found for that email.");
 }
