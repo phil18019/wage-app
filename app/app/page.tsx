@@ -738,13 +738,13 @@ async function handleRestorePro() {
       body: JSON.stringify({ email }),
     });
 
-    const data = await res.json();
+   const data = await res.json();
 
-    if (data.active) {
-      localStorage.setItem("wagecheck_pro_v1", "1");
-      setPro(true);
-      alert("Pro restored successfully.");
-   } else {
+if (data.active) {
+  localStorage.setItem("wagecheck_pro_v1", "1");
+  setPro(true);
+  alert("Pro restored successfully.");
+} else {
   localStorage.removeItem("wagecheck_pro_v1");
   setPro(false);
   alert("No active subscription found for that email.");
