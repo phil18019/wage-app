@@ -461,6 +461,69 @@ if (success === "1") {
 } else {
   setPro(isProEnabled());
 }
+
+useEffect(() => {
+  try {
+    setSettings(getSettings());
+  } catch {
+    setSettings(DEFAULT_SETTINGS);
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const success = params.get("success");
+
+  if (success === "1") {
+    localStorage.setItem("wagecheck_pro_v1", "1");
+    setPro(true);
+    window.history.replaceState({}, "", "/app");
+  } else {
+    setPro(isProEnabled());
+  }
+
+  // Auto-check Stripe subscription status on app load
+  const savedEmail = localStorage.getItem("wagecheck_pro_email_v1");
+  if (savedEmail) {
+    fetch("/api/stripe/restore", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: savedEmail }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.active) {
+          localStorage.setItem("wagecheck_pro_v1", "1");
+          setPro(true);
+        } else {
+          localStorage.removeItem("wagecheck_pro_v1");
+          localStorage.removeItem("wagecheck_pro_email_v1");
+          setPro(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Auto Pro check failed:", err);
+      });
+  }
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_MONTH);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setRows(parsed as ShiftRow[]);
+    }
+  } catch {
+    // ignore
+  } finally {
+    setHasLoadedRows(true);
+  }
+
+  try {
+    refreshSavedMonths();
+  } catch {
+    // ignore
+  }
+}, []);
     try {
       const raw = localStorage.getItem(STORAGE_KEY_MONTH);
       if (raw) {
@@ -479,20 +542,7 @@ if (success === "1") {
       // ignore
     }
   }, []);
-useEffect(() => {
-  if (typeof window === "undefined") return;
 
-  const params = new URLSearchParams(window.location.search);
-  const success = params.get("success");
-
-  if (success === "1") {
-    localStorage.setItem("wagecheck_pro_v1", "1");
-    setPro(true);
-
-    // remove the success parameter from the URL
-    window.history.replaceState({}, "", "/");
-  }
-}, []);
   // Re-sync settings when returning from /settings (fixes Shift tab using stale checkbox value)
   useEffect(() => {
     const syncSettings = () => {
@@ -742,10 +792,12 @@ async function handleRestorePro() {
 
 if (data.active) {
   localStorage.setItem("wagecheck_pro_v1", "1");
+  localStorage.setItem("wagecheck_pro_email_v1", email);
   setPro(true);
   alert("Pro restored successfully.");
 } else {
   localStorage.removeItem("wagecheck_pro_v1");
+  localStorage.removeItem("wagecheck_pro_email_v1");
   setPro(false);
   alert("No active subscription found for that email.");
 }
