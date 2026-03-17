@@ -43,16 +43,17 @@ export default function RootLayout({
           strategy="afterInteractive"
         />
         <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            window.gtag = gtag;
-            gtag('js', new Date());
-            gtag('config', 'G-DM4FPV8B7M', {
-              page_path: window.location.pathname,
-            });
-          `}
-        </Script>
+  {`
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    window.gtag = gtag;
+    gtag('js', new Date());
+    gtag('config', 'G-DM4FPV8B7M', {
+      page_path: window.location.pathname,
+      debug_mode: true
+    });
+  `}
+</Script>
       </head>
 
       <body>{children}</body>
