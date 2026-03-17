@@ -5,25 +5,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "PayCore",
   description: "PayCore - Shift & pay calculator",
-  manifest: "/manifest.json",
-
-  icons: {
-    icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
-    apple: "/icon-192.png",
-  },
-
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "PayCore",
-  },
-
-  other: {
-    "apple-touch-startup-image": "/apple-splash-1290x2796.png",
-  },
 };
 
 export const viewport: Viewport = {
@@ -37,26 +18,24 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
+      <body>
+        {children}
+
+        {/* Google Analytics */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-DM4FPV8B7M"
           strategy="afterInteractive"
         />
         <Script id="google-analytics" strategy="afterInteractive">
-  {`
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    window.gtag = gtag;
-    gtag('js', new Date());
-    gtag('config', 'G-DM4FPV8B7M', {
-      page_path: window.location.pathname,
-      debug_mode: true
-    });
-  `}
-</Script>
-      </head>
-
-      <body>{children}</body>
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            window.gtag = gtag;
+            gtag('js', new Date());
+            gtag('config', 'G-DM4FPV8B7M');
+          `}
+        </Script>
+      </body>
     </html>
   );
 }
