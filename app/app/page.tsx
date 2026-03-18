@@ -431,6 +431,7 @@ export default function Home() {
 
   const [sickHours, setSickHours] = useState<string>("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [pretaxDeductions, setPretaxDeductions] = useState<string>("");
 
   const weekStartsOn = settings.weekStartsOn ?? 0;
 
@@ -676,7 +677,8 @@ else {
   ]);
 
   const month = useMemo(() => computeMonthTotals(rows as any, settings), [rows, settings]);
-
+  const pretaxDeductionsValue = Math.max(0, Number(pretaxDeductions) || 0);
+  const grossAfterDeductions = Math.max(0, month.totalPay - pretaxDeductionsValue);
 
 
   const holidayBal = useMemo(() => {
@@ -1570,6 +1572,40 @@ const input =
               </div>
 
               <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
+
+              <div className="pt-4 mt-4 border-t border-white/20">
+  <div className="text-lg font-semibold mb-2">Pre-tax deductions</div>
+
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div>
+      <div className={label}>Pension / cycle / other</div>
+      <input
+        type="number"
+        inputMode="decimal"
+        min="0"
+        step="0.01"
+        className={input}
+        value={pretaxDeductions}
+        onChange={(e) => setPretaxDeductions(e.target.value)}
+        placeholder="0.00"
+      />
+    </div>
+
+    <div>
+      <div className={label}>Gross after deductions</div>
+      <div className="mt-1 rounded-xl bg-gray-100 border border-gray-200 px-3 py-2 text-lg font-semibold text-gray-900 dark:bg-black/20 dark:border-white/10 dark:text-white">
+        {fmtGBP(grossAfterDeductions)}
+      </div>
+    </div>
+
+    <div>
+      <div className={label}>Note</div>
+      <div className="mt-1 rounded-xl bg-gray-100 border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:bg-black/20 dark:border-white/10 dark:text-white/70">
+        This does not calculate tax or take-home pay.
+      </div>
+    </div>
+  </div>
+</div>
 
               {/* Holiday balance */}
               <div className="pt-4 mt-4 border-t border-white/20">
