@@ -2,6 +2,7 @@
 import type { Settings } from "../settings";
 import { getRateForDate } from "../settings";
 import { computePremiumHours, getPremiumWindows } from "./premiums";
+import { computeHolidayRateForWeek } from "./holidayRate";
 
 export type Flag = "" | "Y" | "P";
 
@@ -310,16 +311,15 @@ function emptyWeek(weekId: string): WeekTotals {
  * - OT threshold applies per week and resets each new week
  * - Qualifying includes worked + hol + lieu + bankHol (+ part-double stdTopUp)
  * - OT can only be paid from worked hours excluding Double subset
- * - holidayRate stays from Settings (not history)
+ * - Holiday pay now auto-calculates from history when available,
+ *   otherwise falls back to manual settings.holidayRate
  */
-
 export function computeWeeklyTotals(
   rows: ShiftRow[],
   settings: Settings,
-  weekStartsOn: number
+  weekStartsOn: number,
+  allRowsForHolidayRate?: ShiftRow[]
 ): WeekTotals[] {
-  const holRate = clampNonNeg(settings.holidayRate);
-
   // Group rows into week buckets
   const byWeek = new Map<string, ShiftRow[]>();
   for (const r of rows || []) {
@@ -349,6 +349,16 @@ export function computeWeeklyTotals(
 
   for (const weekId of weekIds) {
     const weekRows = (byWeek.get(weekId) ?? []).slice();
+
+    const holidayRateResult = computeHolidayRateForWeek(
+      weekId,
+      (allRowsForHolidayRate ?? rows) as ShiftRow[],
+      settings
+    );
+
+   const holRate = holidayRateResult.available
+  ? holidayRateResult.rate
+  : 0;
 
     // sort chronological inside the week
     weekRows.sort((a, b) => {
@@ -404,7 +414,7 @@ export function computeWeeklyTotals(
       tot.bankHolPay += round2(b.bankHol * base);
       tot.doublePay += round2(b.dbl * base * doubleRate);
 
-      // holidayRate is NOT in history (intentionally)
+      // Holiday pay now uses auto history rate when available
       tot.holPay += round2(b.hol * holRate);
 
       const workedAvail = round2(Math.max(0, b.worked - b.dbl));

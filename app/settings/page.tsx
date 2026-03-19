@@ -236,7 +236,7 @@ function importBackup() {
       // 1) Save base settings (always allowed)
       saveSettings({
         ...s,
-        holidayRate: clampNonNeg(num(s.holidayRate)),
+        
         holidayStartBalanceHours: clampNonNeg(num(s.holidayStartBalanceHours)),
         protectPremiumsForLieuBH: !!s.protectPremiumsForLieuBH,
       });
@@ -388,20 +388,57 @@ function importBackup() {
           </div>
 
           <div className="grid gap-4 [&>*]:min-w-0">
-            {/* Holiday rate */}
-            <div>
-              <label className={labelClass}>Holiday rate (£)</label>
-              <input
-                className={inputClass}
-                type="number"
-                step="0.01"
-                value={s.holidayRate}
-                onChange={(e) => setS((p) => ({ ...p, holidayRate: Number(e.target.value) }))}
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Holiday rate can vary — update when needed (not stored in history).
-              </p>
-            </div>
+           
+            {/* Holiday rate rules */}
+<div className="border-t pt-4 dark:border-white/20">
+  <div className="text-sm font-semibold">Holiday rate rules</div>
+  <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
+    These settings control automatic holiday pay calculation when enough history exists.
+  </p>
+
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 [&>*]:min-w-0">
+    <div>
+      <label className={labelClass}>Lookback weeks</label>
+      <input
+        className={inputClass}
+        type="number"
+        min={1}
+        max={52}
+        step="1"
+        value={s.holidayLookbackWeeks ?? 12}
+        onChange={(e) =>
+          setS((p) => ({
+            ...p,
+            holidayLookbackWeeks: Number(e.target.value),
+          }))
+        }
+      />
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Example: 12 means use the previous 12 full weeks before the holiday week.
+      </p>
+    </div>
+
+    <div>
+      <label className={labelClass}>Contract hours per week</label>
+      <input
+        className={inputClass}
+        type="number"
+        min={0}
+        step="0.01"
+        value={s.holidayContractHoursPerWeek ?? 40}
+        onChange={(e) =>
+          setS((p) => ({
+            ...p,
+            holidayContractHoursPerWeek: Number(e.target.value),
+          }))
+        }
+      />
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Example: 40 hours/week gives a 12-week divisor of 480 hours.
+      </p>
+    </div>
+  </div>
+</div>
 
             {/* Week start */}
             <div>

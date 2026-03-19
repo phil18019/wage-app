@@ -9,6 +9,7 @@ import { fmtGBP } from "../lib/engine/money";
 import { computeHolidayBalance } from "../lib/engine/holidayBalance";
 import { computeMonthTotals } from "../lib/engine/month";
 import { computeWeeklyTotals } from "../lib/engine/week";
+import { computeHolidayRateForWeek } from "../lib/engine/holidayRate";
 import {
   computePremiumHours,
   getPremiumWindows,
@@ -44,6 +45,7 @@ type ShiftRow = {
 
 const STORAGE_KEY_MONTH = "wagecheck.month.v1";
 const STORAGE_KEY_ALLTIME = "wagecheck.alltime.v1";
+const STORAGE_KEY_HOLIDAY_WEEK_OVERRIDES = "wagecheck.holidayWeekOverrides.v1";
 const APP_VERSION = "1.0.1";
 
 /* ------------------------- small utilities ------------------------- */
@@ -402,12 +404,13 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>("shift");
 
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [rows, setRows] = useState<ShiftRow[]>([]);
-  const [hasLoadedRows, setHasLoadedRows] = useState(false);
+ const [rows, setRows] = useState<ShiftRow[]>([]);
+const [hasLoadedRows, setHasLoadedRows] = useState(false);
+const [hasLoadedHolidayWeekOverrides, setHasLoadedHolidayWeekOverrides] = useState(false);
 
-  const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
-  const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
-
+const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
+const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
+const [holidayWeekOverrides, setHolidayWeekOverrides] = useState<Record<string, string>>({});
   const [pro, setPro] = useState(false);
  
 
@@ -441,10 +444,12 @@ export default function Home() {
   }, [premiumWindows]);
 
   function refreshSavedMonths() {
-    setSavedMonths(listSavedMonths());
-  }
+  setSavedMonths(
+    listSavedMonths().sort((a, b) => b.id.localeCompare(a.id))
+  );
+}
 
- // Load settings / month rows / pro / saved months
+ // Load settings / month rows / pro / saved months / holiday overrides
 useEffect(() => {
   try {
     setSettings(getSettings());
@@ -479,6 +484,20 @@ useEffect(() => {
     refreshSavedMonths();
   } catch {
     // ignore
+  }
+
+  try {
+    const rawOverrides = localStorage.getItem(STORAGE_KEY_HOLIDAY_WEEK_OVERRIDES);
+    if (rawOverrides) {
+      const parsed = JSON.parse(rawOverrides);
+      if (parsed && typeof parsed === "object") {
+        setHolidayWeekOverrides(parsed);
+      }
+    }
+  } catch {
+    // ignore
+  } finally {
+    setHasLoadedHolidayWeekOverrides(true);
   }
 }, []);
 
@@ -576,6 +595,18 @@ useEffect(() => {
       // ignore
     }
   }, [rows, hasLoadedRows]);
+ useEffect(() => {
+  if (!hasLoadedHolidayWeekOverrides) return;
+
+  try {
+    localStorage.setItem(
+      STORAGE_KEY_HOLIDAY_WEEK_OVERRIDES,
+      JSON.stringify(holidayWeekOverrides)
+    );
+  } catch {
+    // ignore
+  }
+}, [holidayWeekOverrides, hasLoadedHolidayWeekOverrides]);
 
   const sickConflict = Number(sickHours) > 0 && (startTime !== "" || endTime !== "");
 
@@ -675,10 +706,20 @@ else {
     settings,
     workedHoursRaw,
   ]);
+const allRowsForHolidayRate = useMemo(() => {
+  const savedRows = (savedMonths ?? []).reduce((acc: any[], m: any) => {
+    return acc.concat(m.rows ?? m.shifts ?? []);
+  }, []);
 
-  const month = useMemo(() => computeMonthTotals(rows as any, settings), [rows, settings]);
+  return [...(rows ?? []), ...savedRows];
+}, [rows, savedMonths]);
+  const month = useMemo(
+  () => computeMonthTotals(rows as any, settings, allRowsForHolidayRate as any),
+  [rows, settings, allRowsForHolidayRate]
+);
+ 
   const pretaxDeductionsValue = Math.max(0, Number(pretaxDeductions) || 0);
-  const grossAfterDeductions = Math.max(0, month.totalPay - pretaxDeductionsValue);
+ 
 
 
   const holidayBal = useMemo(() => {
@@ -696,10 +737,70 @@ else {
       return null;
     }
   }, [rows, savedMonths, settings]);
+
+
   const weeks = useMemo(
-    () => computeWeeklyTotals(rows as any, settings, weekStartsOn),
-    [rows, settings, weekStartsOn]
+  () => computeWeeklyTotals(rows as any, settings, weekStartsOn, allRowsForHolidayRate as any),
+  [rows, settings, weekStartsOn, allRowsForHolidayRate]
+);
+
+ const holidayWeekInfo = useMemo(() => {
+  const map: Record<
+    string,
+    {
+      autoAvailable: boolean;
+      autoRate: number;
+      manualRate: number;
+      rateUsed: number;
+      source: "auto" | "manual" | "none";
+      holidayPay: number;
+      reason?: string;
+    }
+  > = {};
+
+  for (const w of weeks) {
+    if ((w.hol ?? 0) <= 0) continue;
+
+    const auto = computeHolidayRateForWeek(
+      w.weekId,
+      allRowsForHolidayRate as any,
+      settings
+    );
+
+    const manualRate = Math.max(0, Number(holidayWeekOverrides[w.weekId] || 0));
+    const rateUsed = auto.available ? auto.rate : manualRate;
+
+    const source: "auto" | "manual" | "none" =
+      auto.available ? "auto" : manualRate > 0 ? "manual" : "none";
+
+    map[w.weekId] = {
+      autoAvailable: auto.available,
+      autoRate: auto.rate,
+      manualRate,
+      rateUsed,
+      source,
+      holidayPay:
+        Math.round((((w.hol || 0) * rateUsed) + Number.EPSILON) * 100) / 100,
+      reason: auto.reason,
+    };
+  }
+
+  return map;
+}, [weeks, allRowsForHolidayRate, settings, holidayWeekOverrides]);
+
+const monthHolidayPayAdjusted = useMemo(() => {
+  return round2(
+    weeks.reduce((sum, w) => {
+      if ((w.hol ?? 0) <= 0) return sum;
+      return sum + (holidayWeekInfo[w.weekId]?.holidayPay ?? 0);
+    }, 0)
   );
+}, [weeks, holidayWeekInfo]);
+
+const monthTotalPayAdjusted = useMemo(() => {
+  return round2(month.totalPay - month.holPay + monthHolidayPayAdjusted);
+}, [month, monthHolidayPayAdjusted]);
+const grossAfterDeductions = Math.max(0, monthTotalPayAdjusted - pretaxDeductionsValue);
 
   const otThresholdDisplay = useMemo(() => {
     try {
@@ -885,13 +986,17 @@ const existing = savedMonths.find((m) => m.id === id);
     }
 
     const entry: SavedMonth = {
-      id,
-      label,
-      createdAt: Date.now(),
-      shiftCount: rows.length,
-      rows,
-      totals: month,
-    };
+  id,
+  label,
+  createdAt: Date.now(),
+  shiftCount: rows.length,
+  rows,
+  totals: {
+    ...month,
+    holPay: monthHolidayPayAdjusted,
+    totalPay: monthTotalPayAdjusted,
+  },
+};
 
     upsertSavedMonth(entry);
     refreshSavedMonths();
@@ -1395,65 +1500,127 @@ const input =
         )}
 
         {/* -------------------- WEEK TAB -------------------- */}
-        {activeTab === "week" && (
-          <div className={card}>
-            <div className="text-lg font-semibold mb-2">Weekly summary</div>
-            <div className="text-xs text-gray-600 dark:text-white/60 mb-3">
-              Week start: {weekStartLabel(weekStartsOn)} (set in Settings)
+       {activeTab === "week" && (
+  <div className={card}>
+    <div className="text-lg font-semibold mb-2">Weekly summary</div>
+    <div className="text-xs text-gray-600 dark:text-white/60 mb-3">
+      Week start: {weekStartLabel(weekStartsOn)} (set in Settings)
+    </div>
+
+    {weeks.length === 0 ? (
+      <div className="text-sm text-gray-600 dark:text-white/60">No shifts yet.</div>
+    ) : (
+      <div className="space-y-3">
+        {weeks.slice(0, 8).map((w) => (
+          <div key={w.weekId} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-semibold">{w.label}</div>
+             <div className="text-sm">
+  Total: <b>{fmtGBP(round2(w.totalPay - w.holPay + (holidayWeekInfo[w.weekId]?.holidayPay ?? 0)))}</b>
+</div>
             </div>
 
-            {weeks.length === 0 ? (
-              <div className="text-sm text-gray-600 dark:text-white/60">No shifts yet.</div>
-            ) : (
-              <div className="space-y-3">
-                {weeks.slice(0, 8).map((w) => (
-                  <div key={w.weekId} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold">{w.label}</div>
-                      <div className="text-sm">
-                        Total: <b>{fmtGBP(w.totalPay)}</b>
-                      </div>
-                    </div>
+            <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+              <div>
+                Worked: <b>{w.worked}</b>
+              </div>
+              <div>
+                Qualifying: <b>{w.qualifying}</b>
+              </div>
+              <div>
+                STD: <b>{w.std}</b>
+              </div>
+              <div>
+                OT: <b>{w.ot}</b>
+              </div>
+              <div>
+                Holiday: <b>{w.hol}</b>
+              </div>
+              <div>
+                LIEU: <b>{w.lieu}</b>
+              </div>
+              <div>
+                BH: <b>{w.bankHol}</b>
+              </div>
+              <div>
+                Double: <b>{w.dbl}</b>
+              </div>
+              <div>
+                Late: <b>{w.late}</b>
+              </div>
+              <div>
+                Night: <b>{w.night}</b>
+              </div>
+            </div>
 
-                    <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
-                      <div>
-                        Worked: <b>{w.worked}</b>
-                      </div>
-                      <div>
-                        Qualifying: <b>{w.qualifying}</b>
-                      </div>
-                      <div>
-                        STD: <b>{w.std}</b>
-                      </div>
-                      <div>
-                        OT: <b>{w.ot}</b>
-                      </div>
-                      <div>
-                        Holiday: <b>{w.hol}</b>
-                      </div>
-                      <div>
-                        LIEU: <b>{w.lieu}</b>
-                      </div>
-                      <div>
-                        BH: <b>{w.bankHol}</b>
-                      </div>
-                      <div>
-                        Double: <b>{w.dbl}</b>
-                      </div>
-                      <div>
-                        Late: <b>{w.late}</b>
-                      </div>
-                      <div>
-                        Night: <b>{w.night}</b>
-                      </div>
-                    </div>
+            {w.hol > 0 && (
+              <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-gray-900 dark:bg-yellow-500/10 dark:border-yellow-500/20 dark:text-white">
+                <div className="font-semibold mb-2">Holiday pay</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    Holiday hours: <b>{w.hol}</b>
                   </div>
-                ))}
+                 <div>
+  Holiday pay: <b>{fmtGBP(holidayWeekInfo[w.weekId]?.holidayPay ?? 0)}</b>
+</div>
+                </div>
+
+                <div className="mt-2">
+  {holidayWeekInfo[w.weekId]?.autoAvailable ? (
+    <div>
+      Rate used: <b>£{holidayWeekInfo[w.weekId].rateUsed.toFixed(2)}/hr</b>
+      <div className="text-xs text-gray-600 dark:text-white/60 mt-1">
+        Source: Auto (12-week history found)
+      </div>
+    </div>
+  ) : (
+    <div className="mt-2">
+      <div className="text-sm font-medium text-red-700 dark:text-red-300">
+        Auto holiday rate unavailable
+      </div>
+      <div className="text-xs text-gray-600 dark:text-white/60 mt-1">
+        {holidayWeekInfo[w.weekId]?.reason || "Not enough stored history."}
+      </div>
+
+      <div className="mt-3">
+        <div className={label}>Manual holiday rate (£/hr)</div>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          className={input}
+          value={holidayWeekOverrides[w.weekId] ?? ""}
+          onChange={(e) =>
+            setHolidayWeekOverrides((prev) => ({
+              ...prev,
+              [w.weekId]: e.target.value,
+            }))
+          }
+          placeholder="Enter manual rate"
+        />
+      </div>
+
+      {Number(holidayWeekOverrides[w.weekId] ?? 0) > 0 && (
+        <div className="mt-3">
+          Rate used: <b>£{Number(holidayWeekOverrides[w.weekId]).toFixed(2)}/hr</b>
+          <div className="text-xs text-gray-600 dark:text-white/60 mt-1">
+            Source: Manual override
+          </div>
+        </div>
+      )}
+    </div>
+  )}
+</div>
               </div>
             )}
           </div>
-        )}
-
+        ))}
+      </div>
+    )}
+  </div>
+)}
         {/* -------------------- MONTH TAB -------------------- */}
         {activeTab === "month" && (
           <div className={card}>
@@ -1567,11 +1734,12 @@ const input =
                   Double pay: <b>{fmtGBP(month.doublePay)}</b>
                 </div>
                 <div>
-                  Holiday pay: <b>{fmtGBP(month.holPay)}</b>
+                  Holiday pay: <b>{fmtGBP(monthHolidayPayAdjusted)}</b>
                 </div>
               </div>
 
-              <div className="mt-3 text-base font-semibold">Total: {fmtGBP(month.totalPay)}</div>
+              <div className="mt-3 text-base font-semibold">Total: {fmtGBP(monthTotalPayAdjusted)}</div>
+      
 
               <div className="pt-4 mt-4 border-t border-white/20">
   <div className="text-lg font-semibold mb-2">Pre-tax deductions</div>

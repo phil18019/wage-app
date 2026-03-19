@@ -25,6 +25,10 @@ export type Settings = {
   // manual (NOT stored in history)
   holidayRate: number;
 
+  // holiday auto-calc settings
+  holidayLookbackWeeks: number;
+  holidayContractHoursPerWeek: number;
+
   // other settings
   weekStartsOn: number; // 0=Sun … 6=Sat
 
@@ -65,6 +69,10 @@ const DEFAULT_CUSTOM_WINDOWS: PremiumWindows = {
 
 export const DEFAULT_SETTINGS: Settings = {
   holidayRate: 0,
+
+  holidayLookbackWeeks: 12,
+  holidayContractHoursPerWeek: 40,
+
   weekStartsOn: 0,
   rates: [BASE_DEFAULT_RATE],
 
@@ -256,6 +264,8 @@ function migrateIfLegacy(parsed: any): Settings {
 
   return {
     holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
+    holidayLookbackWeeks: clampInt(parsed?.holidayLookbackWeeks, 12, 1, 52),
+    holidayContractHoursPerWeek: clampNonNeg(parsed?.holidayContractHoursPerWeek, 40),  
     weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
     rates: normalizeRates([legacyRate]),
 
@@ -278,6 +288,8 @@ function migrateIfLegacy(parsed: any): Settings {
 function normalizeSettingsShape(parsed: any): Settings {
   return {
     holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
+    holidayLookbackWeeks: clampInt(parsed?.holidayLookbackWeeks, 12, 1, 52),
+    holidayContractHoursPerWeek: clampNonNeg(parsed?.holidayContractHoursPerWeek, 40),
     weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
     rates: normalizeRates(Array.isArray(parsed?.rates) ? parsed.rates : []),
 

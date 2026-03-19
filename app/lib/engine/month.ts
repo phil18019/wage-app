@@ -66,15 +66,26 @@ export function emptyMonthTotals(): MonthTotals {
 /**
  * ✅ Month totals now come from summing weekly totals
  * so OT is truly weekly and resets each week.
+ *
+ * Holiday pay can now use full history lookback when allRowsForHolidayRate is supplied.
  */
-export function computeMonthTotals(rows: ShiftRow[], settings: Settings): MonthTotals {
+export function computeMonthTotals(
+  rows: ShiftRow[],
+  settings: Settings,
+  allRowsForHolidayRate?: ShiftRow[]
+): MonthTotals {
   const tot = emptyMonthTotals();
 
   const weekStartsOn = Number.isFinite(settings.weekStartsOn)
     ? Math.min(6, Math.max(0, Math.floor(settings.weekStartsOn)))
     : 0;
 
-  const weeks = computeWeeklyTotals(rows || [], settings, weekStartsOn);
+  const weeks = computeWeeklyTotals(
+    rows || [],
+    settings,
+    weekStartsOn,
+    allRowsForHolidayRate ?? rows ?? []
+  );
 
   for (const w of weeks) {
     tot.worked += w.worked;
