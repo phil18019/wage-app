@@ -432,9 +432,10 @@ const [holidayWeekOverrides, setHolidayWeekOverrides] = useState<Record<string, 
   const [bankHolFlag, setBankHolFlag] = useState<Flag>("");
   const [doubleFlag, setDoubleFlag] = useState<Flag>("");
 
-  const [sickHours, setSickHours] = useState<string>("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [pretaxDeductions, setPretaxDeductions] = useState<string>("");
+ const [sickHours, setSickHours] = useState<string>("");
+const [editingId, setEditingId] = useState<string | null>(null);
+const [pretaxDeductions, setPretaxDeductions] = useState<string>("");
+const [saveFeedback, setSaveFeedback] = useState<"idle" | "saving" | "saved">("idle");
 
   const weekStartsOn = settings.weekStartsOn ?? 0;
 
@@ -822,9 +823,40 @@ const grossAfterDeductions = Math.max(0, monthTotalPayAdjusted - pretaxDeduction
     setSickHours("");
   }
 
- function saveDayToMonth() {
+function saveDayToMonth() {
   const sh = clampNonNeg(Number(scheduledHours) || 0);
   const sick = clampNonNeg(Number(sickHours) || 0);
+
+  const hasTime = (startTime || "").trim() !== "" || (endTime || "").trim() !== "";
+  const hasFullTimePair = (startTime || "").trim() !== "" && (endTime || "").trim() !== "";
+  const hasScheduled = sh > 0;
+  const hasFlags =
+    holidayFlag !== "" ||
+    unpaidFlag !== "" ||
+    lieuFlag !== "" ||
+    bankHolFlag !== "" ||
+    doubleFlag !== "";
+  const hasSick = sick > 0;
+
+  // Block completely blank saves
+  if (!hasTime && !hasScheduled && !hasFlags && !hasSick) {
+    alert("Enter some shift data before saving.");
+    return;
+  }
+
+  // Block half-entered times
+  if (hasTime && !hasFullTimePair) {
+    alert("Please enter both start and finish times.");
+    return;
+  }
+
+  // Block sick + worked times together
+  if (sick > 0 && ((startTime || "").trim() !== "" || (endTime || "").trim() !== "")) {
+    alert("Remove start and finish times when entering sick hours.");
+    return;
+  }
+
+  setSaveFeedback("saving");
 
   const row: ShiftRow = {
     id: `${date}-${Date.now()}`,
@@ -843,6 +875,11 @@ const grossAfterDeductions = Math.max(0, monthTotalPayAdjusted - pretaxDeduction
   setRows((prev) => [row, ...prev]);
   upsertAllTimeShift(row);
   resetDailyInputs();
+
+  setSaveFeedback("saved");
+  window.setTimeout(() => {
+    setSaveFeedback("idle");
+  }, 1200);
 }
 
   function deleteShift(id: string) {
@@ -1400,13 +1437,24 @@ const input =
                 </button>
               </div>
             ) : (
-              <button
-                className="mt-4 w-full rounded-xl bg-white/15 hover:bg-white/20 px-4 py-3 font-semibold border border-white/10"
-                onClick={saveDayToMonth}
-                type="button"
-              >
-                Save day to month
-              </button>
+             <button
+  className={`mt-4 w-full rounded-xl px-4 py-3 font-semibold border border-white/10 transition ${
+    saveFeedback === "saved"
+      ? "bg-green-600 text-white"
+      : saveFeedback === "saving"
+      ? "bg-blue-600 text-white"
+      : "bg-white/15 hover:bg-white/20"
+  }`}
+  onClick={saveDayToMonth}
+  type="button"
+  disabled={saveFeedback !== "idle"}
+>
+  {saveFeedback === "saving"
+    ? "Saving..."
+    : saveFeedback === "saved"
+    ? "Saved ✅"
+    : "Save day to month"}
+</button>
             )}
           </div>
         )}
