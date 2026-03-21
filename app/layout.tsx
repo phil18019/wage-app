@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
+import AnalyticsUserId from "./components/AnalyticsUserId";
 
 export const metadata: Metadata = {
   title: "PayCore",
@@ -23,7 +24,7 @@ export default function RootLayout({
 
         {/* Google Analytics */}
         <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-DM4FPV8B7M"
+          src="https://www.googletagmanager.com/gtag/js?id=G-DN4FPV087M"
           strategy="afterInteractive"
         />
         <Script id="google-analytics" strategy="afterInteractive">
@@ -35,6 +36,9 @@ export default function RootLayout({
             gtag('config', 'G-DN4FPV087M');
           `}
         </Script>
+
+        {/* ✅ NEW: user tracking */}
+        <AnalyticsUserId />
       </body>
     </html>
   );
