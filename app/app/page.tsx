@@ -10,6 +10,7 @@ import { computeHolidayBalance } from "../lib/engine/holidayBalance";
 import { computeMonthTotals } from "../lib/engine/month";
 import { computeWeeklyTotals } from "../lib/engine/week";
 import { computeHolidayRateForWeek } from "../lib/engine/holidayRate";
+import WhatsNewModal from "../components/WhatsNewModal";
 import {
   computePremiumHours,
   getPremiumWindows,
@@ -47,6 +48,7 @@ const STORAGE_KEY_MONTH = "wagecheck.month.v1";
 const STORAGE_KEY_ALLTIME = "wagecheck.alltime.v1";
 const STORAGE_KEY_HOLIDAY_WEEK_OVERRIDES = "wagecheck.holidayWeekOverrides.v1";
 const APP_VERSION = "1.0.1";
+const WHATS_NEW_KEY = "paycore.whatsnew.v1.0.1-sick-holiday-update";
 
 /* ------------------------- small utilities ------------------------- */
 
@@ -402,6 +404,7 @@ type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>("shift");
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
 
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
  const [rows, setRows] = useState<ShiftRow[]>([]);
@@ -499,6 +502,17 @@ useEffect(() => {
     // ignore
   } finally {
     setHasLoadedHolidayWeekOverrides(true);
+  }
+}, []);
+
+useEffect(() => {
+  try {
+    const seen = localStorage.getItem(WHATS_NEW_KEY);
+    if (!seen) {
+      setShowWhatsNew(true);
+    }
+  } catch {
+    // ignore
   }
 }, []);
 
@@ -810,6 +824,15 @@ const grossAfterDeductions = Math.max(0, monthTotalPayAdjusted - pretaxDeduction
       return 0;
     }
   }, [settings, date]);
+
+  function closeWhatsNew() {
+  try {
+    localStorage.setItem(WHATS_NEW_KEY, "1");
+  } catch {
+    // ignore
+  }
+  setShowWhatsNew(false);
+}
 
   function resetDailyInputs() {
     setScheduledHours("");
@@ -2018,6 +2041,8 @@ const input =
           </div>
         )}
 </div>
+
+<WhatsNewModal open={showWhatsNew} onClose={closeWhatsNew} />
         {/* Bottom sticky nav (mobile tap-safe) */}
         <div className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)] pointer-events-none">
