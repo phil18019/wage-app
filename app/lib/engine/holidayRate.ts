@@ -2,6 +2,7 @@
 import type { Settings } from "../settings";
 import type { ShiftRow, WeekTotals } from "./week";
 import { computeWeeklyTotals } from "./week";
+import { getRateForDate } from "../settings";
 
 export type HolidayRateResult = {
   available: boolean;
@@ -157,11 +158,15 @@ export function computeHolidayRateForWeek(
     };
   }
 
-  return {
-    available: true,
-    rate: round2(qualifyingPay / divisor),
-    lookbackStartWeekId: requiredWeekIds[0],
-    lookbackEndWeekId: requiredWeekIds[requiredWeekIds.length - 1],
-    weeksRequired: lookbackWeeks,
-  };
+  const calculatedRate = qualifyingPay / divisor;
+const baseRateFloor = Math.max(0, Number(getRateForDate(holidayWeekId).baseRate || 0));
+const finalRate = round2(Math.max(calculatedRate, baseRateFloor));
+
+return {
+  available: true,
+  rate: finalRate,
+  lookbackStartWeekId: requiredWeekIds[0],
+  lookbackEndWeekId: requiredWeekIds[requiredWeekIds.length - 1],
+  weeksRequired: lookbackWeeks,
+};
 }

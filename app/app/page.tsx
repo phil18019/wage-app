@@ -1568,38 +1568,41 @@ const input =
 </div>
             </div>
 
-            <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
-              <div>
-                Worked: <b>{w.worked}</b>
-              </div>
-              <div>
-                Qualifying: <b>{w.qualifying}</b>
-              </div>
-              <div>
-                STD: <b>{w.std}</b>
-              </div>
-              <div>
-                OT: <b>{w.ot}</b>
-              </div>
-              <div>
-                Holiday: <b>{w.hol}</b>
-              </div>
-              <div>
-                LIEU: <b>{w.lieu}</b>
-              </div>
-              <div>
-                BH: <b>{w.bankHol}</b>
-              </div>
-              <div>
-                Double: <b>{w.dbl}</b>
-              </div>
-              <div>
-                Late: <b>{w.late}</b>
-              </div>
-              <div>
-                Night: <b>{w.night}</b>
-              </div>
-            </div>
+           <div className="mt-2 grid grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
+  <div>
+    Worked: <b>{w.worked}</b>
+  </div>
+  <div>
+    Qualifying: <b>{w.qualifying}</b>
+  </div>
+  <div>
+    STD: <b>{w.std}</b>
+  </div>
+  <div>
+    OT: <b>{w.ot}</b>
+  </div>
+  <div>
+    Holiday: <b>{w.hol}</b>
+  </div>
+  <div>
+    Sick: <b>{w.sick}</b>
+  </div>
+  <div>
+    LIEU: <b>{w.lieu}</b>
+  </div>
+  <div>
+    BH: <b>{w.bankHol}</b>
+  </div>
+  <div>
+    Double: <b>{w.dbl}</b>
+  </div>
+  <div>
+    Late: <b>{w.late}</b>
+  </div>
+  <div>
+    Night: <b>{w.night}</b>
+  </div>
+</div>
 
             {w.hol > 0 && (
               <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-gray-900 dark:bg-yellow-500/10 dark:border-yellow-500/20 dark:text-white">
