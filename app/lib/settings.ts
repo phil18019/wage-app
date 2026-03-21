@@ -22,12 +22,12 @@ export type PremiumWindows = {
 };
 
 export type Settings = {
-  // manual (NOT stored in history)
-  holidayRate: number;
-
   // holiday auto-calc settings
   holidayLookbackWeeks: number;
   holidayContractHoursPerWeek: number;
+
+  // sick rules
+  sickWaitingDays: number; // 0, 3, 6, 9
 
   // other settings
   weekStartsOn: number; // 0=Sun … 6=Sat
@@ -68,10 +68,9 @@ const DEFAULT_CUSTOM_WINDOWS: PremiumWindows = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  holidayRate: 0,
-
   holidayLookbackWeeks: 12,
   holidayContractHoursPerWeek: 40,
+  sickWaitingDays: 0,
 
   weekStartsOn: 0,
   rates: [BASE_DEFAULT_RATE],
@@ -109,6 +108,11 @@ function clampInt(x: unknown, fallback: number, min: number, max: number) {
 
 function clampWeekStartsOn(x: unknown, fallback: number) {
   return clampInt(x, fallback, 0, 6);
+}
+
+function normalizeSickWaitingDays(x: unknown): number {
+  const n = Number(x);
+  return n === 3 || n === 6 || n === 9 ? n : 0;
 }
 
 function safeBool(x: unknown, fallback: boolean) {
@@ -261,11 +265,11 @@ function migrateIfLegacy(parsed: any): Settings {
     otThreshold: safeNum(parsed?.otThreshold, BASE_DEFAULT_RATE.otThreshold),
     doubleRate: safeNum(parsed?.doubleRate, BASE_DEFAULT_RATE.doubleRate),
   };
-
-  return {
-    holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
+    
+   return {
     holidayLookbackWeeks: clampInt(parsed?.holidayLookbackWeeks, 12, 1, 52),
-    holidayContractHoursPerWeek: clampNonNeg(parsed?.holidayContractHoursPerWeek, 40),  
+    holidayContractHoursPerWeek: clampNonNeg(parsed?.holidayContractHoursPerWeek, 40),
+    sickWaitingDays: normalizeSickWaitingDays(parsed?.sickWaitingDays),
     weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
     rates: normalizeRates([legacyRate]),
 
@@ -286,10 +290,10 @@ function migrateIfLegacy(parsed: any): Settings {
 }
 
 function normalizeSettingsShape(parsed: any): Settings {
-  return {
-    holidayRate: clampNonNeg(parsed?.holidayRate, DEFAULT_SETTINGS.holidayRate),
+ return {
     holidayLookbackWeeks: clampInt(parsed?.holidayLookbackWeeks, 12, 1, 52),
     holidayContractHoursPerWeek: clampNonNeg(parsed?.holidayContractHoursPerWeek, 40),
+    sickWaitingDays: normalizeSickWaitingDays(parsed?.sickWaitingDays),
     weekStartsOn: clampWeekStartsOn(parsed?.weekStartsOn, DEFAULT_SETTINGS.weekStartsOn),
     rates: normalizeRates(Array.isArray(parsed?.rates) ? parsed.rates : []),
 

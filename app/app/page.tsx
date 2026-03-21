@@ -1752,9 +1752,15 @@ const input =
               <div>
                 Unpaid (Part): <b>{month.unpaidPart}</b>
               </div>
-              <div>
-                Sick Hours: <b>{month.sick}</b>
-              </div>
+             <div>
+  Sick Hours: <b>{month.sick}</b>
+</div>
+<div>
+  Paid sick hours: <b>{month.paidSickHours ?? 0}</b>
+</div>
+<div>
+  Unpaid sick waiting hours: <b>{month.unpaidSickWaitingHours ?? 0}</b>
+</div>
             </div>
 
             <div className="pt-4 mt-4 border-t border-white/20">
@@ -1790,7 +1796,12 @@ const input =
               </div>
 
               <div className="mt-3 text-base font-semibold">Total: {fmtGBP(monthTotalPayAdjusted)}</div>
-      
+      {(month.sickWaitingDaysApplied ?? 0) > 0 && (
+  <div className="mt-3 rounded-xl bg-yellow-100 text-yellow-900 px-3 py-2 text-sm">
+    Sick waiting days applied: {month.sickWaitingDaysApplied} sick shift-day
+    {month.sickWaitingDaysApplied === 1 ? "" : "s"} were unpaid, so sick pay is lower than total sick hours.
+  </div>
+)}
 
               <div className="pt-4 mt-4 border-t border-white/20">
   <div className="text-lg font-semibold mb-2">Pre-tax deductions</div>

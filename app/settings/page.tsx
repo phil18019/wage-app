@@ -440,6 +440,36 @@ function importBackup() {
   </div>
 </div>
 
+{/* Sick waiting days */}
+<div className="border-t pt-4 dark:border-white/20">
+  <div className="text-sm font-semibold">Sick pay rules</div>
+  <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
+    Choose how many entered sick shift-days are unpaid before sick pay starts.
+  </p>
+
+  <div className="mt-3 max-w-sm">
+    <label className={labelClass}>Sick waiting days</label>
+    <select
+      className={inputClass}
+      value={s.sickWaitingDays ?? 0}
+      onChange={(e) =>
+        setS((p) => ({
+          ...p,
+          sickWaitingDays: Number(e.target.value),
+        }))
+      }
+    >
+      <option value={0}>0 (Disabled)</option>
+      <option value={3}>3</option>
+      <option value={6}>6</option>
+      <option value={9}>9</option>
+    </select>
+
+    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      Counts consecutive entered sick shift-days only. Sick hours still show in totals even when waiting days are unpaid.
+    </p>
+  </div>
+</div>
             {/* Week start */}
             <div>
               <label className={labelClass}>Week starts on</label>

@@ -37,6 +37,9 @@ export type WeekTotals = {
   unpaidFull: number;
   unpaidPart: number;
   sick: number;
+  paidSickHours: number;
+  unpaidSickWaitingHours: number;
+  sickWaitingDaysApplied: number;
 
   stdPay: number;
   otPay: number;
@@ -88,6 +91,45 @@ function getWeekStartYMD(dateYMD: string, weekStartsOn: number) {
   const diff = (dow - ws + 7) % 7; // days since week start
   d.setUTCDate(d.getUTCDate() - diff);
   return formatUTCDateToYMD(d);
+}
+
+function addDaysYMD(dateYMD: string, days: number) {
+  const d = parseYMDToUTCDate(dateYMD);
+  d.setUTCDate(d.getUTCDate() + days);
+  return formatUTCDateToYMD(d);
+}
+
+function buildSickWaitingMap(rows: ShiftRow[], settings: Settings) {
+  const waitingDays = Number((settings as any)?.sickWaitingDays ?? 0);
+  const out: Record<string, boolean> = {};
+
+  if (waitingDays <= 0) return out;
+
+  const sortedRows = (rows || [])
+    .slice()
+    .sort((a, b) => {
+      const da = (a.date || "").trim();
+      const db = (b.date || "").trim();
+      if (da !== db) return da < db ? -1 : 1;
+      return (a.id || "") < (b.id || "") ? -1 : 1;
+    });
+
+  let streak = 0;
+
+  for (const r of sortedRows) {
+    const sickHours = clampNonNeg(Number(r.sickHours) || 0);
+    const isSickRow = sickHours > 0;
+
+    if (isSickRow) {
+      streak += 1;
+      out[r.id] = streak <= waitingDays;
+    } else {
+      // any saved non-sick row breaks the sickness spell
+      streak = 0;
+    }
+  }
+
+  return out;
 }
 
 function toMinutes(t: string) {
@@ -288,9 +330,13 @@ function emptyWeek(weekId: string): WeekTotals {
     lieu: 0,
     bankHol: 0,
     dbl: 0,
-    unpaidFull: 0,
+   unpaidFull: 0,
     unpaidPart: 0,
     sick: 0,
+    paidSickHours: 0,
+    unpaidSickWaitingHours: 0,
+    sickWaitingDaysApplied: 0,
+
 
     stdPay: 0,
     otPay: 0,
@@ -333,6 +379,10 @@ export function computeWeeklyTotals(
   const weekIds = [...byWeek.keys()].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
 
   const out: WeekTotals[] = [];
+ const sickWaitingMap = buildSickWaitingMap(
+  (allRowsForHolidayRate ?? rows) || [],
+  settings
+);
 
   type RowCalc = {
     r: ShiftRow;
@@ -405,8 +455,19 @@ export function computeWeeklyTotals(
       const nightAdd = clampNonNeg(rate.nightPremium);
       const doubleRate = clampNonNeg(rate.doubleRate);
 
-      // Non-OT dependent pay parts
-      tot.sickPay += round2(b.sick * base);
+   // Non-OT dependent pay parts
+      const sickIsWaitingDay = !!sickWaitingMap[r.id];
+
+      if (b.sick > 0) {
+        if (sickIsWaitingDay) {
+          tot.unpaidSickWaitingHours += b.sick;
+          tot.sickWaitingDaysApplied += 1;
+        } else {
+          tot.paidSickHours += b.sick;
+          tot.sickPay += round2(b.sick * base);
+        }
+      }
+
       tot.lateAddPay += round2(b.late * lateAdd);
       tot.nightAddPay += round2(b.night * nightAdd);
 
@@ -482,6 +543,9 @@ export function computeWeeklyTotals(
     tot.unpaidFull = round2(tot.unpaidFull);
     tot.unpaidPart = round2(tot.unpaidPart);
     tot.sick = round2(tot.sick);
+    tot.paidSickHours = round2(tot.paidSickHours);
+    tot.unpaidSickWaitingHours = round2(tot.unpaidSickWaitingHours);
+    tot.sickWaitingDaysApplied = round2(tot.sickWaitingDaysApplied);
 
     // ---- round pay ----
     tot.stdPay = round2(tot.stdPay);

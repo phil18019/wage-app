@@ -17,6 +17,9 @@ export type MonthTotals = {
   unpaidFull: number;
   unpaidPart: number;
   sick: number;
+  paidSickHours: number;
+  unpaidSickWaitingHours: number;
+  sickWaitingDaysApplied: number;
 
   stdPay: number;
   otPay: number;
@@ -49,6 +52,10 @@ export function emptyMonthTotals(): MonthTotals {
     unpaidFull: 0,
     unpaidPart: 0,
     sick: 0,
+    paidSickHours: 0,
+    unpaidSickWaitingHours: 0,
+    sickWaitingDaysApplied: 0,
+
 
     stdPay: 0,
     otPay: 0,
@@ -104,6 +111,9 @@ export function computeMonthTotals(
     tot.unpaidFull += w.unpaidFull;
     tot.unpaidPart += w.unpaidPart;
     tot.sick += w.sick;
+    tot.paidSickHours += w.paidSickHours;
+    tot.unpaidSickWaitingHours += w.unpaidSickWaitingHours;
+    tot.sickWaitingDaysApplied += w.sickWaitingDaysApplied;
 
     tot.stdPay += w.stdPay;
     tot.otPay += w.otPay;
@@ -128,9 +138,12 @@ export function computeMonthTotals(
   tot.lieu = round2(tot.lieu);
   tot.bankHol = round2(tot.bankHol);
   tot.dbl = round2(tot.dbl);
-  tot.unpaidFull = round2(tot.unpaidFull);
+ tot.unpaidFull = round2(tot.unpaidFull);
   tot.unpaidPart = round2(tot.unpaidPart);
   tot.sick = round2(tot.sick);
+  tot.paidSickHours = round2(tot.paidSickHours);
+  tot.unpaidSickWaitingHours = round2(tot.unpaidSickWaitingHours);
+  tot.sickWaitingDaysApplied = round2(tot.sickWaitingDaysApplied);
 
   tot.stdPay = round2(tot.stdPay);
   tot.otPay = round2(tot.otPay);
