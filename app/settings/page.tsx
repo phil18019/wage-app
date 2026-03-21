@@ -391,7 +391,12 @@ function importBackup() {
            
             {/* Holiday rate rules */}
 <div className="border-t pt-4 dark:border-white/20">
-  <div className="text-sm font-semibold">Holiday rate rules</div>
+ <div className="flex items-center gap-2 text-sm font-semibold">
+  Holiday rate rules
+  <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full">
+    NEW
+  </span>
+</div>
   <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
     These settings control automatic holiday pay calculation when enough history exists.
   </p>
@@ -442,7 +447,12 @@ function importBackup() {
 
 {/* Sick waiting days */}
 <div className="border-t pt-4 dark:border-white/20">
-  <div className="text-sm font-semibold">Sick pay rules</div>
+  <div className="flex items-center gap-2 text-sm font-semibold">
+  Sick pay rules
+  <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full">
+    NEW
+  </span>
+</div>
   <p className="text-xs text-gray-600 dark:text-white/60 mt-1">
     Choose how many entered sick shift-days are unpaid before sick pay starts.
   </p>
