@@ -1491,7 +1491,9 @@ const input =
               <div className="text-sm text-gray-600 dark:text-white/60">No saved shifts yet.</div>
             ) : (
               <div className="space-y-3">
-                {rows.map((r) => {
+               {[...rows]
+  .sort((a, b) => (a.date < b.date ? 1 : -1)) // newest first
+  .map((r) => {
                   const b = computeRowBreakdown(r, settings, premiumWindows);
                   return (
                     <div key={r.id} className="rounded-xl bg-black/10 dark:bg-black/20 p-3">
