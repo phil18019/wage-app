@@ -403,7 +403,7 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
-  const APP_VERSION = "1.0.7"; // bump this every release
+  const APP_VERSION = "1.0.8"; // bump this every release
 
 useEffect(() => {
   const checkVersion = () => {
@@ -1306,19 +1306,21 @@ const input =
     Refresh
   </button>
 
-  <Link
-    href="/help"
-    className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-  >
-    Help
-  </Link>
+ <Link
+  href="/help"
+  className="text-base px-3 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/40 text-yellow-300 font-extrabold leading-none shadow-[0_0_6px_rgba(250,204,21,0.4)]"
+  title="Help"
+>
+  ?
+</Link>
 
-  <Link
-    href="/settings"
-    className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-  >
-    Settings
-  </Link>
+<Link
+  href="/settings"
+  className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+  title="Settings"
+>
+  ⚙️
+</Link>
 </nav>
           </div>
         </header>
