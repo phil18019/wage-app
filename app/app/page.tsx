@@ -403,7 +403,7 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
-  const APP_VERSION = "1.0.5"; // bump this every release
+  const APP_VERSION = "1.0.6"; // bump this every release
 
 useEffect(() => {
   const checkVersion = () => {
@@ -441,16 +441,21 @@ useEffect(() => {
     window.removeEventListener("pageshow", handlePageShow);
   };
 }, []);
+function refreshApp() {
+  window.location.reload();
+}
   const [activeTab, setActiveTab] = useState<TabKey>("shift");
   const [showWhatsNew, setShowWhatsNew] = useState(false);
 
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+
  const [rows, setRows] = useState<ShiftRow[]>([]);
 const [hasLoadedRows, setHasLoadedRows] = useState(false);
 const [hasLoadedHolidayWeekOverrides, setHasLoadedHolidayWeekOverrides] = useState(false);
 
 const [savedMonths, setSavedMonths] = useState<SavedMonth[]>([]);
 const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
+
 const [holidayWeekOverrides, setHolidayWeekOverrides] = useState<Record<string, string>>({});
   const [pro, setPro] = useState(false);
  
@@ -1291,20 +1296,30 @@ const input =
                 )}
               </div>
             </div>
-            <nav className="flex items-center gap-2 shrink-0">
-              <Link
-                href="/help"
-                className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-              >
-                Help
-              </Link>
-              <Link
-                href="/settings"
-                className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-              >
-                Settings
-              </Link>
-            </nav>
+           <nav className="flex items-center gap-2 shrink-0">
+  <button
+    type="button"
+    onClick={refreshApp}
+    className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+    title="Refresh app"
+  >
+    Refresh
+  </button>
+
+  <Link
+    href="/help"
+    className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+  >
+    Help
+  </Link>
+
+  <Link
+    href="/settings"
+    className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+  >
+    Settings
+  </Link>
+</nav>
           </div>
         </header>
 
