@@ -403,7 +403,7 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
-  const APP_VERSION = "1.0.4"; // bump this every release
+  const APP_VERSION = "1.0.5"; // bump this every release
 
 useEffect(() => {
   const checkVersion = () => {
@@ -423,10 +423,22 @@ useEffect(() => {
     }
   };
 
+  const handleFocus = () => {
+    checkVersion();
+  };
+
+  const handlePageShow = () => {
+    checkVersion();
+  };
+
   document.addEventListener("visibilitychange", handleVisibility);
+  window.addEventListener("focus", handleFocus);
+  window.addEventListener("pageshow", handlePageShow);
 
   return () => {
     document.removeEventListener("visibilitychange", handleVisibility);
+    window.removeEventListener("focus", handleFocus);
+    window.removeEventListener("pageshow", handlePageShow);
   };
 }, []);
   const [activeTab, setActiveTab] = useState<TabKey>("shift");
