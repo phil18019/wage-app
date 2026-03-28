@@ -2043,7 +2043,7 @@ const input =
           <div className="flex justify-between px-1">
             <span>Holiday ({selectedSavedMonth.totals?.hol ?? 0})</span>
             <span className="font-semibold text-green-400">
-              {fmtGBP(selectedSavedMonth.totals?.holidayPay ?? 0)}
+              {fmtGBP(selectedSavedMonth.totals?.holPay ?? 0)}
             </span>
           </div>
 
