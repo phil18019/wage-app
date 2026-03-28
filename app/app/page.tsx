@@ -403,7 +403,7 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
-  const APP_VERSION = "1.0.2"; // bump this every release
+  const APP_VERSION = "1.0.3"; // bump this every release
 
 useEffect(() => {
   const storedVersion = localStorage.getItem("app_version");
@@ -1289,7 +1289,7 @@ const input =
         {/* Announcement banner */}
 <div className="overflow-hidden bg-blue-600/20 border border-blue-400/30 rounded-xl mb-4">
   <div className="whitespace-nowrap text-sm py-2 animate-marquee">
-    ✨ Updates: Sick pay rules improved, holiday pay now auto-calculated, and accuracy enhanced across weeks & months. All configurable in the settings tab.
+    ✨ Update: Improved history layout + sick pay tracking added  ✨ Update: Improved history layout + sick pay tracking added
   </div>
 </div>
         <div className="flex-1 min-h-0 overflow-y-auto pb-28">
