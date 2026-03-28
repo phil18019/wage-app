@@ -403,6 +403,22 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
+  const APP_VERSION = "1.0.2"; // bump this every release
+
+useEffect(() => {
+  const storedVersion = localStorage.getItem("app_version");
+
+  if (storedVersion !== APP_VERSION) {
+    // New version detected
+    localStorage.setItem("app_version", APP_VERSION);
+
+    // Clear ONLY cache-related stuff (not user data)
+    localStorage.removeItem("app_cache"); // if you use one
+
+    // Force reload once
+    window.location.reload();
+  }
+}, []);
   const [activeTab, setActiveTab] = useState<TabKey>("shift");
   const [showWhatsNew, setShowWhatsNew] = useState(false);
 
