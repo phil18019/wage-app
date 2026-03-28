@@ -403,21 +403,31 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
-  const APP_VERSION = "1.0.3"; // bump this every release
+  const APP_VERSION = "1.0.4"; // bump this every release
 
 useEffect(() => {
-  const storedVersion = localStorage.getItem("app_version");
+  const checkVersion = () => {
+    const storedVersion = localStorage.getItem("app_version");
 
-  if (storedVersion !== APP_VERSION) {
-    // New version detected
-    localStorage.setItem("app_version", APP_VERSION);
+    if (storedVersion !== APP_VERSION) {
+      localStorage.setItem("app_version", APP_VERSION);
+      window.location.reload();
+    }
+  };
 
-    // Clear ONLY cache-related stuff (not user data)
-    localStorage.removeItem("app_cache"); // if you use one
+  checkVersion();
 
-    // Force reload once
-    window.location.reload();
-  }
+  const handleVisibility = () => {
+    if (document.visibilityState === "visible") {
+      checkVersion();
+    }
+  };
+
+  document.addEventListener("visibilitychange", handleVisibility);
+
+  return () => {
+    document.removeEventListener("visibilitychange", handleVisibility);
+  };
 }, []);
   const [activeTab, setActiveTab] = useState<TabKey>("shift");
   const [showWhatsNew, setShowWhatsNew] = useState(false);
@@ -1289,7 +1299,7 @@ const input =
         {/* Announcement banner */}
 <div className="overflow-hidden bg-blue-600/20 border border-blue-400/30 rounded-xl mb-4">
   <div className="whitespace-nowrap text-sm py-2 animate-marquee">
-    ✨ Update: Improved history layout + sick pay tracking added  ✨ Update: Improved history layout + sick pay tracking added
+    ✨ Update: History layout improved, sick pay tracking added, plus smoother automatic updates.......✨ Update: History layout improved, sick pay tracking added, plus smoother automatic updates
   </div>
 </div>
         <div className="flex-1 min-h-0 overflow-y-auto pb-28">
