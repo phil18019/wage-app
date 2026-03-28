@@ -1997,47 +1997,128 @@ const input =
                   </div>
                 </div>
 
-                {selectedSavedMonth && (
-                  <div className="mt-4 rounded-xl bg-black/10 dark:bg-black/20 p-3">
-                    <div className="font-semibold mb-2">{selectedSavedMonth.label}</div>
+ {selectedSavedMonth && (
+  <div className="mt-4 rounded-xl bg-black/10 dark:bg-black/20 p-3">
+    <div className="font-semibold mb-3">{selectedSavedMonth.label}</div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-gray-700 dark:text-white/80">
-                      <div>
-                        Worked: <b>{selectedSavedMonth.totals?.worked ?? 0}</b>
-                      </div>
-                      <div>
-                        Qualifying: <b>{selectedSavedMonth.totals?.qualifying ?? 0}</b>
-                      </div>
-                      <div>
-                        STD: <b>{selectedSavedMonth.totals?.std ?? 0}</b>
-                      </div>
-                      <div>
-                        OT: <b>{selectedSavedMonth.totals?.ot ?? 0}</b>
-                      </div>
-                      <div>
-                        Holiday: <b>{selectedSavedMonth.totals?.hol ?? 0}</b>
-                      </div>
-                      <div>
-                        LIEU: <b>{selectedSavedMonth.totals?.lieu ?? 0}</b>
-                      </div>
-                      <div>
-                        BH: <b>{selectedSavedMonth.totals?.bankHol ?? 0}</b>
-                      </div>
-                      <div>
-                        Double: <b>{selectedSavedMonth.totals?.dbl ?? 0}</b>
-                      </div>
-                      <div>
-                        Late: <b>{selectedSavedMonth.totals?.late ?? 0}</b>
-                      </div>
-                      <div>
-                        Night: <b>{selectedSavedMonth.totals?.night ?? 0}</b>
-                      </div>
-                      <div>
-                        Total pay: <b>{fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}</b>
-                      </div>
-                    </div>
-                  </div>
-                )}
+    <div className="space-y-4 text-sm text-gray-700 dark:text-white/80">
+
+      {/* CORE */}
+      <div className="pt-3 border-t border-white/10 first:border-0 first:pt-0">
+        <div className="inline-block text-xs uppercase tracking-wide mb-2 px-2 py-1 rounded-md bg-blue-500/10 text-blue-300">Core</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+          <div className="flex justify-between px-1">
+            <span>Worked</span>
+            <span className="font-semibold">{selectedSavedMonth.totals?.worked ?? 0}</span>
+          </div>
+
+          <div className="flex justify-between px-1">
+            <span>Qualifying</span>
+            <span className="font-semibold">{selectedSavedMonth.totals?.qualifying ?? 0}</span>
+          </div>
+
+          <div className="flex justify-between px-1">
+            <span>STD ({selectedSavedMonth.totals?.std ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.stdPay ?? 0)}
+            </span>
+          </div>
+
+          <div className="flex justify-between px-1">
+            <span>OT ({selectedSavedMonth.totals?.ot ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.otPay ?? 0)}
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      {/* LEAVE */}
+      <div className="pt-3 border-t border-white/10">
+        <div className="inline-block text-xs uppercase tracking-wide mb-2 px-2 py-1 rounded-md bg-yellow-500/10 text-yellow-300">Leave</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+          <div className="flex justify-between px-1">
+            <span>Holiday ({selectedSavedMonth.totals?.hol ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.holidayPay ?? 0)}
+            </span>
+          </div>
+
+         <div className="flex justify-between px-1 relative group">
+  <span className="cursor-help">
+    Sick ({selectedSavedMonth.totals?.sick ?? 0})
+  </span>
+
+  <span className="font-semibold text-green-400">
+    {fmtGBP(selectedSavedMonth.totals?.sickPay ?? 0)}
+  </span>
+
+  {/* Tooltip */}
+  <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-black text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
+    Includes paid & unpaid sick hours
+  </div>
+</div>
+
+          <div className="flex justify-between px-1">
+            <span>LIEU ({selectedSavedMonth.totals?.lieu ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.lieuPay ?? 0)}
+            </span>
+          </div>
+
+          <div className="flex justify-between px-1">
+            <span>BH ({selectedSavedMonth.totals?.bankHol ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.bankHolPay ?? 0)}
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      {/* EXTRAS */}
+      <div className="pt-3 border-t border-white/10">
+        <div className="inline-block text-xs uppercase tracking-wide mb-2 px-2 py-1 rounded-md bg-purple-500/10 text-purple-300">Extras</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+          <div className="flex justify-between px-1">
+            <span>Late ({selectedSavedMonth.totals?.late ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.lateAddPay ?? 0)}
+            </span>
+          </div>
+
+          <div className="flex justify-between px-1">
+            <span>Night ({selectedSavedMonth.totals?.night ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.nightAddPay ?? 0)}
+            </span>
+          </div>
+
+          <div className="flex justify-between px-1">
+            <span>Double ({selectedSavedMonth.totals?.dbl ?? 0})</span>
+            <span className="font-semibold text-green-400">
+              {fmtGBP(selectedSavedMonth.totals?.doublePay ?? 0)}
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      {/* TOTAL */}
+      <div className="border-t border-white/20 pt-4 mt-3 flex justify-between text-base px-2">
+        <span className="font-semibold">Total</span>
+        <span className="font-bold text-green-500">
+          {fmtGBP(selectedSavedMonth.totals?.totalPay ?? 0)}
+        </span>
+      </div>
+
+    </div>
+  </div>
+)}
               </>
             )}
           </div>
