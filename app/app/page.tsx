@@ -49,7 +49,7 @@ const STORAGE_KEY_ALLTIME = "wagecheck.alltime.v1";
 const STORAGE_KEY_HOLIDAY_WEEK_OVERRIDES = "wagecheck.holidayWeekOverrides.v1";
 const APP_VERSION = "1.0.1";
 const WHATS_NEW_KEY = "paycore.whatsnew.v1.0.1-sick-holiday-update";
-
+const PRETAX_KEY = "paycore.pretax.v1";
 /* ------------------------- small utilities ------------------------- */
 
 function round2(n: number) {
@@ -403,7 +403,7 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
-  const APP_VERSION = "1.0.8"; // bump this every release
+  const APP_VERSION = "1.0.9"; // bump this every release
 
 useEffect(() => {
   const checkVersion = () => {
@@ -480,7 +480,10 @@ const [holidayWeekOverrides, setHolidayWeekOverrides] = useState<Record<string, 
 
  const [sickHours, setSickHours] = useState<string>("");
 const [editingId, setEditingId] = useState<string | null>(null);
-const [pretaxDeductions, setPretaxDeductions] = useState<string>("");
+const [pretaxDeductions, setPretaxDeductions] = useState<string>(() => {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(PRETAX_KEY) ?? "";
+});
 const [saveFeedback, setSaveFeedback] = useState<"idle" | "saving" | "saved">("idle");
 
   const weekStartsOn = settings.weekStartsOn ?? 0;
@@ -653,6 +656,7 @@ useEffect(() => {
       // ignore
     }
   }, [rows, hasLoadedRows]);
+
  useEffect(() => {
   if (!hasLoadedHolidayWeekOverrides) return;
 
@@ -665,6 +669,11 @@ useEffect(() => {
     // ignore
   }
 }, [holidayWeekOverrides, hasLoadedHolidayWeekOverrides]);
+
+
+useEffect(() => {
+  localStorage.setItem(PRETAX_KEY, pretaxDeductions);
+}, [pretaxDeductions]);
 
   const sickConflict = Number(sickHours) > 0 && (startTime !== "" || endTime !== "");
 
