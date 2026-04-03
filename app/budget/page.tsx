@@ -262,7 +262,7 @@ export default function BudgetPage() {
               <button
                 type="button"
                 onClick={addOutgoingRow}
-                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 font-semibold text-white"
+                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 active:scale-95 active:bg-green-800 transition-transform duration-100 font-semibold text-white"
               >
                 Add outgoing
               </button>
