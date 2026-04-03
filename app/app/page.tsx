@@ -403,7 +403,7 @@ function rateForDateFromSettings(settings: Settings, date: string) {
 type TabKey = "shift" | "shifts" | "week" | "month" | "history";
 
 export default function Home() {
-  const APP_VERSION = "1.0.9"; // bump this every release
+  const APP_VERSION = "1.0.10"; // bump this every release
 
 useEffect(() => {
   const checkVersion = () => {
@@ -1306,14 +1306,22 @@ const input =
               </div>
             </div>
            <nav className="flex items-center gap-2 shrink-0">
-  <button
-    type="button"
-    onClick={refreshApp}
-    className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-    title="Refresh app"
-  >
-    Refresh
-  </button>
+ <button
+  type="button"
+  onClick={refreshApp}
+  className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+  title="Refresh app"
+>
+  ↻
+</button>
+
+<Link
+  href="/budget"
+  className="text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+  title="Budget"
+>
+  £
+</Link>
 
  <Link
   href="/help"
@@ -1337,7 +1345,7 @@ const input =
         {/* Announcement banner */}
 <div className="overflow-hidden bg-blue-600/20 border border-blue-400/30 rounded-xl mb-4">
   <div className="whitespace-nowrap text-sm py-2 animate-marquee">
-    ✨ Update: History layout improved, sick pay tracking added, plus smoother automatic updates.......✨ Update: History layout improved, sick pay tracking added, plus smoother automatic updates
+    ✨ Update: Check out the new budget tool, click on the £ icon on main header.
   </div>
 </div>
         <div className="flex-1 min-h-0 overflow-y-auto pb-28">
