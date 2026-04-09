@@ -1345,7 +1345,8 @@ const input =
         {/* Announcement banner */}
 <div className="overflow-hidden bg-blue-600/20 border border-blue-400/30 rounded-xl mb-4">
   <div className="whitespace-nowrap text-sm py-2 animate-marquee">
-    ✨ Update: Check out the new budget tool, click on the £ icon on main header.
+    ✨ Update: Check your swipe details for pay week 3 / BH week, any missing overtime hours have been added on to the standard hours / £17.3 and then the missing OT premiums / £6.7 have been added seperately to balance out the total hourly pay £24 
+  <span className="inline-block w-40"></span>
   </div>
 </div>
         <div className="flex-1 min-h-0 overflow-y-auto pb-28">
