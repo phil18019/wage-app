@@ -458,6 +458,7 @@ const [selectedSavedMonthId, setSelectedSavedMonthId] = useState<string>("");
 
 const [holidayWeekOverrides, setHolidayWeekOverrides] = useState<Record<string, string>>({});
   const [pro, setPro] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false)
  
 
   const [date, setDate] = useState<string>(() => {
@@ -1801,12 +1802,12 @@ const input =
                   Save Month {pro ? "" : "🔒"}
                 </button>
 
-                <button
-                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-white"
-                  onClick={clearMonth}
-                >
-                  Clear
-                </button>
+               <button
+  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+  onClick={() => setShowClearModal(true)}
+>
+  Clear Month
+</button>
               </div>
             </div>
 
@@ -2199,6 +2200,54 @@ const input =
 </div>
 
 <WhatsNewModal open={showWhatsNew} onClose={closeWhatsNew} />
+{showClearModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-gray-900 p-6 shadow-xl">
+      <div className="mb-2 text-lg font-semibold text-white">
+        Clear this month?
+      </div>
+
+      <div className="mb-4 text-sm text-white/70">
+        You're using the free version, so monthly data needs to be cleared to start again.
+        <br />
+        <br />
+        <span className="font-medium text-white">
+          PayCore Pro lets you keep your monthly history, holiday balances, and future pay changes.
+        </span>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button
+          className="rounded-lg bg-white/10 px-4 py-2 text-white hover:bg-white/15"
+          onClick={() => setShowClearModal(false)}
+        >
+          Cancel
+        </button>
+
+        <button
+          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+          onClick={() => {
+           setShowClearModal(false)
+           setActiveTab("history")
+          }}
+        >
+          Upgrade
+        </button>
+
+        <button
+          className="rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+          onClick={() => {
+            clearMonth()
+            setShowClearModal(false)
+          }}
+        >
+          Clear Month
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
         {/* Bottom sticky nav (mobile tap-safe) */}
         <div className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 pb-[env(safe-area-inset-bottom)] pointer-events-none">
