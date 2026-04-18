@@ -17,6 +17,16 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    title: "Bank Holidays",
+    bullets: [
+      "If working more than your scheduled hours on this day then follow below step",
+      "Users that take double pay need to change the scheduled hours to match total hours worked for that shift",
+      "If your taking part shift holiday on this day then leave scheduled hours as your actual contracted hours",
+      "Users taking double lieu, input data as normal"
+    
+    ],
+  },
+  {
     title: "Premium hours (Late & Night)",
     bullets: [
       "Premiums are calculated automatically using the time windows set in Settings.",
